@@ -74,7 +74,7 @@ class TrainerConfig:
     exp_dir:                str             = "exp"
 
     batch_size:             int             = 1
-    mini_batch_size:        int             = 1
+    mini_batch_size:        int             = None
     nb_batches:             Tuple[int]      = (0, 0)
     max_steps:              int             = 0
 
@@ -99,9 +99,24 @@ class TrainerConfig:
         for k,v in kwargs.items():
             setattr(self, k, v)
 
+        if self.mini_batch_size == None:
+            self.mini_batch_size = self.batch_size
+
+        self._check_valid()
+
     def __str__(self):
-        attributes = [x for x in dir(self) if not x.startswith('__')]
+        attributes = [x for x in dir(self) if not x.startswith('_')]
         return '\n'.join(f"{a:25}: {getattr(self, a)}" for a in attributes)
+
+    def _check_valid(self):
+        valid = True
+
+        if self.mini_batch_size is not None and self.mini_batch_size > self.batch_size:
+            warning("mini-batch size was greater than batch size")
+            warning("setting mini-batch size equal to batch size")
+            self.mini_batch_size = self.batch_size
+
+        return valid
 
 class Trainer:
     """
@@ -178,6 +193,8 @@ class Trainer:
 
         self.nb_examples = 0
         self.nb_updates = 0
+
+        self.next_save = cfg.checkpoint_frequency
 
     def _get_opt(self):
         """
@@ -373,7 +390,8 @@ class Trainer:
         self.nb_examples += mini_batch_size
         if self.nb_examples >= self.cfg.batch_size:
             self._update_parameters()
-        
+        if self.nb_updates >= self.next_save:
+            self.save_checkpoint()
         return loss, metrics
 
     @torch.no_grad()
@@ -418,6 +436,7 @@ class Trainer:
             'nb_updates': self.nb_updates, 
         }
         torch.save(checkpoint, self.directories['checkpoints'] / checkpoint_name)
+        self.next_save = self.nb_updates + cfg.checkpoint_frequency
 
     def load_checkpoint(self, path):
         """
