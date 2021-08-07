@@ -13,6 +13,7 @@ class TrainerConfig:
     exp_dir:                str             = "exp",
 
     batch_size:             int             = 1
+    mini_batch_size:        int             = 1
     nb_batches:             Tuple[int]      = (0, 0)
     max_steps:              int             = 0
 
@@ -117,23 +118,70 @@ class Trainer:
             'logs': log_dir,
         }
 
-    # TODO: support for infinite dataloading
     def _setup_dataloader(self, train_dataset, test_dataset):
-        pass
+        args = {
+            batch_size = self.cfg.mini_batch_size,
+            shuffle = True,
+            num_workers = self.cfg.nb_workers,
+        }
+
+        self.train_loader = torch.utils.data.DataLoader(train_dataset, **args)
+        self.test_loader = torch.utils.data.DataLoader(test_dataset, **args)
+
+        self.train_iter = iter(self.train_loader)
+        self.test_iter = iter(self.test_loader)
+
+        self.nb_batches = (
+            self.cfg.nb_batches[0] if self.cfg.nb_batches[0] else len(self.train_loader),
+            self.cfg.nb_batches[1] if self.cfg.nb_batches[1] else len(self.test_loader),
+        )
+
+    def _get_batch(self, split='train'):
+        if split == 'train':
+            iterator = self.train_iter
+            loader = self.train_loader
+        elif split in ['test', 'eval']:
+            iterator = self.test_iter
+            loader = self.test_loader
+
+        try:
+            data = next(iterator)
+        except StopIteration:
+            iterator = iter(loader)
+            data = next(iterator)
+            if split == 'train':
+                self.train_iter = iterator
+            elif split in ['test', 'eval']:
+                self.test_iter = iterator
+
+        return data
 
     def _autocast_loss(self, *args):
         with torch.cuda.amp.autocast(enabled=self.scaler.is_enabled()):
             return self._loss_fn(*args)
 
+    def _check_terminate(self):
+        if self.cfg.max_steps < self.nb_updates:
+            return True
+
+        return False
+
     def train(self):
-        pass
+        while not self._check_terminate():
+            for _ in self.nb_batches[0]:
+                train_step()
+
+            for _ in self.nb_batches[1]:
+                eval_step()
 
     def train_step(self):
         self.net.train()
+        batch = self._get_batch(split='train')
 
     @torch.no_grad()
     def eval_step(self):
         self.net.eval()
+        batch = self._get_batch(split='eval')
 
     def _update_parameters(self):
         self.scaler.step(self.opt)
