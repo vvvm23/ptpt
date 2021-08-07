@@ -65,8 +65,8 @@ class TrainerConfig:
                                 measured in `nb_updates`.
     """
 
-    exp_name:               str             = "exp",
-    exp_dir:                str             = "exp",
+    exp_name:               str             = "exp"
+    exp_dir:                str             = "exp"
 
     batch_size:             int             = 1
     mini_batch_size:        int             = 1
@@ -86,11 +86,15 @@ class TrainerConfig:
     use_amp:                bool            = True
 
     save_outputs:           bool            = True
-    checkpoint_frequency:   int             = 100
+    checkpoint_frequency:   int             = 1000
 
     def __init__(self, **kwargs):
         for k,v in kwargs.items():
             setattr(self, k, v)
+
+    def __str__(self):
+        attributes = [x for x in dir(self) if not x.startswith('__')]
+        return '\n'.join(f"{a:25}: {getattr(self, a)}" for a in attributes)
 
 class Trainer:
     """
@@ -133,6 +137,9 @@ class Trainer:
 
         TODO: `loss_fn` and `device_fn` having `self` in arg list feels awkward.
         find alternative.
+            - turns out, they do not need this at all. `loss_fn` can access `net` 
+              even after passing it to the class.
+            - device function is less clear cut.
         """
         if cfg == None:
             cfg = TrainerConfig()
@@ -154,7 +161,7 @@ class Trainer:
 
         self.grad_scaler = torch.cuda.amp.GradScaler(enabled = cfg.use_amp)
 
-        self._loss_fn = partial(loss_fn, self)
+        self._loss_fn = loss_fn
         self.loss_fn = self._autocast_loss if cfg.use_amp else self._loss_fn
 
         self.device_fn = partial(device_fn, self)
@@ -181,7 +188,7 @@ class Trainer:
 
         TODO: rename 'anneal_mode' to 'scheduling'
         """
-        if cfg.lr_anneal_mode in ['multi', 'multisteplr']
+        if cfg.lr_anneal_mode in ['multi', 'multisteplr']:
             return torch.optim.lr_scheduler.MultiStepLR(
                 self.opt, 
                 milestones = self.cfg.lr_milestones, 
@@ -202,6 +209,7 @@ class Trainer:
         `self.directories`.
 
         TODO: add support for additional output directories (think: images)
+        TODO: might be good to add support for arbitrary callback functions 
         """
         exps_dir = Path(cfg.exp_dir)
         exps_dir.mkdir(exist_ok=True)
@@ -232,9 +240,9 @@ class Trainer:
         `self.nb_batches` equal to length of dataloader.
         """
         args = {
-            batch_size = self.cfg.mini_batch_size,
-            shuffle = True,
-            num_workers = self.cfg.nb_workers,
+            'batch_size': self.cfg.mini_batch_size,
+            'shuffle': True,
+            'num_workers': self.cfg.nb_workers,
         }
 
         self.train_loader = torch.utils.data.DataLoader(train_dataset, **args)
