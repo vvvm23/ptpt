@@ -9,6 +9,62 @@ from functools import partial
 from .utils import get_device
 
 class TrainerConfig:
+    """ 
+    Helper class to store Trainer configuration options and some sane
+    defaults.
+
+    Attributes:
+        exp_name:               identifying name of the current experiment; used
+                                for creating experiment directory.
+
+        exp_dir:                root directory for all experiments.
+
+        batch_size:             number of training examples before updating
+                                parameters.
+
+        mini_batch_size:        number of examples on the GPU at any one time.
+
+        nb_batches:             tuple (nb_train, nb_test) representing number of
+                                train batches before evaluating, then how many
+                                eval batches before resuming training.
+                                a value of 0 means to consume entirety of loader
+                                before continuing to next stage.
+
+        max_steps:              maximum number of steps before termination.
+                                a value of 0 means there is no predefined
+                                maximum number of steps.
+
+        optimizer:              a `torch.optim` instance, if present use this
+                                optimizer over `optimizer_name`.
+
+        optimizer_name:         a string that maps to some optimizer so it can
+                                be automatically initialised.
+
+        learning_rate:          the optimizer learning rate.
+
+        lr_anneal_mode:         string representing the learning rate scheduler
+                                mode. if present, create the corresponding rate
+                                scheduler.
+
+        lr_milestones:          if we are using a scheduler, define a list of
+                                milestones, based on `nb_updates`.
+
+        lr_gamma:               if the scheduler uses gamma annealing, define
+                                the multiplicative factor.
+
+        nb_workers:             number of CPU workers to use when loading data.
+
+        use_cuda:               whether to use the CUDA device if available
+
+        use_amp:                whether to try using automatic mixed precision.
+
+        save_outputs:           whether to save checkpoints, logs and other data
+                                to disk.
+
+        checkpoint_frequency:   the frequency at which to save a checkpoint,
+                                measured in `nb_updates`.
+    """
+
     exp_name:               str             = "exp",
     exp_dir:                str             = "exp",
 
@@ -29,7 +85,7 @@ class TrainerConfig:
     use_cuda:               bool            = True
     use_amp:                bool            = True
 
-    use_checkpoints:        bool            = True
+    save_outputs:           bool            = True
     checkpoint_frequency:   int             = 100
 
     def __init__(self, **kwargs):
@@ -37,6 +93,22 @@ class TrainerConfig:
             setattr(self, k, v)
 
 class Trainer:
+    """
+    Module core class that abstracts away PyTorch implementation details. 
+
+    The aim is the provide the following:
+        - abstracting away repeated details common across many deep learning
+          projects.
+        - providing a suite of deep learning methods that can be easily toggled
+          and changed.
+        - abstract away complex implementation details such as multi-GPU, TPUs
+          and AMP; both in a local and distributed setting.
+        - providing a consistent and ever-present API for logging and
+          experiment reproducibility.
+
+    Essentially, to abstract away as much as possible, whilst maintaining
+    flexibility, and to make using best practises as painless as possible.
+    """
     def __init__(self,
         net:                    torch.nn.Module,
         loss_fn:                Callable,
@@ -45,10 +117,29 @@ class Trainer:
         device_fn:              Callable = lambda self, x: x.to(self.device),
         cfg:                    TrainerConfig = None
     ):
+        """
+        the `Trainer` init function.
+
+        Args:
+            net:            a `nn.Module` that is the model we wish to train.
+            loss_fn:        the loss function we wish to minimise that calls
+                            `self.net`.
+            train_dataset:  the training dataset.
+            test_dataset:   the test dataset.
+            device_fn:      a function that handles moving a batch to
+                            `self.device`.
+            cfg:            a `TrainerConfig` instance that holds all
+                            hyperparameters.
+
+        TODO: `loss_fn` and `device_fn` having `self` in arg list feels awkward.
+        find alternative.
+        """
         if cfg == None:
             cfg = TrainerConfig()
         self.cfg = cfg
-        self._setup_workspace()
+
+        if self.cfg.save_outputs:
+            self._setup_workspace()
         self._setup_dataloader()
 
         self.device = get_device(cfg.use_cuda)
@@ -72,6 +163,10 @@ class Trainer:
         self.nb_updates = 0
 
     def _get_opt(self):
+        """
+        get the optimizer based on `cfg.optimizer_name`
+        defaults to the Adam optimizer.
+        """
         if cfg.optimizer_name in ['adam']:
             return torch.optim.Adam(self.net.parameters(), lr=self.cfg.learning_rate)
 
@@ -80,6 +175,12 @@ class Trainer:
         return torch.optim.Adam(self.net.parameters(), lr=self.cfg.learning_rate)
 
     def _get_scheduler(self):
+        """
+        gets the learning rate scheduling mode.
+        defaults to no scheduling, i.e: the identity scheduler.
+
+        TODO: rename 'anneal_mode' to 'scheduling'
+        """
         if cfg.lr_anneal_mode in ['multi', 'multisteplr']
             return torch.optim.lr_scheduler.MultiStepLR(
                 self.opt, 
@@ -96,6 +197,12 @@ class Trainer:
         )
 
     def _setup_workspace(self):
+        """
+        function that sets up the workspace directories and stores them in
+        `self.directories`.
+
+        TODO: add support for additional output directories (think: images)
+        """
         exps_dir = Path(cfg.exp_dir)
         exps_dir.mkdir(exist_ok=True)
 
@@ -119,6 +226,11 @@ class Trainer:
         }
 
     def _setup_dataloader(self, train_dataset, test_dataset):
+        """
+        sets up dataloaders for provided datasets.
+        also transparently converts finite datasets to infinite ones by setting
+        `self.nb_batches` equal to length of dataloader.
+        """
         args = {
             batch_size = self.cfg.mini_batch_size,
             shuffle = True,
@@ -137,6 +249,15 @@ class Trainer:
         )
 
     def _get_batch(self, split='train'):
+        """
+        gets a batch of data from the specified split.
+        if the iterator has been exhausted, create a new one from the loader.
+
+        TODO: load data onto device based on device_fn
+        TODO: eventually get rid of device_fn, and automatically determine based
+        on specified device mode (single vs. multi device / process, CPU vs.
+        GPU vs. TPU)
+        """
         if split == 'train':
             iterator = self.train_iter
             loader = self.train_loader
@@ -157,19 +278,39 @@ class Trainer:
         return data
 
     def _autocast_loss(self, *args):
+        """
+        thin wrapper around `loss_fn` to provide AMP autocasting
+        """
         with torch.cuda.amp.autocast(enabled=self.scaler.is_enabled()):
             return self._loss_fn(*args)
 
-    def _check_terminate(self):
-        if self.cfg.max_steps < self.nb_updates:
+    def _check_terminate(self) -> bool:
+        """
+        function that return `True` if a training termination condition has
+        occurred.
+
+        TODO: add some common termination conditions
+        TODO: add option to pass arbitrary termination conditions
+        """
+        if self.cfg.max_steps and self.nb_updates < self.cfg.max_steps:
             return True
 
         return False
 
     def train(self, 
             tqdm = False, 
-            silent = False
+            silent = False,
         ):
+        """
+        starts the main training loop. continue until termination condition is
+        met.
+
+        Args:
+            tqdm: train with TQDM loading bars
+            silent: run training loop silently
+
+        TODO: a lot
+        """
         while not self._check_terminate():
             for _ in self.nb_batches[0]:
                 loss, *metrics = train_step()
@@ -177,8 +318,21 @@ class Trainer:
             for _ in self.nb_batches[1]:
                 loss, *metrics = eval_step()
 
-    # TODO: issue if mini bs doesn't divide bs correctly
     def train_step(self):
+        """
+        executes one iteration of the training loop.
+        one iteration looks like:
+            - getting a batch
+            - calculating the loss (and other metrics)
+            - weight loss based on how much of the batch was complete
+            - if one full bach has been processed, update the parameters
+
+        essentially, transparently implements 'gradient accumulation'; helpful
+        for super-massive batch sizes.
+
+        TODO: issue if mini bs doesn't divide bs perfectly
+        TODO: need way to understand meaning of metrics
+        """
         self.net.train()
         batch = self._get_batch(split='train')
         loss, *metrics = self.loss_fn(batch)
@@ -198,12 +352,21 @@ class Trainer:
 
     @torch.no_grad()
     def eval_step(self):
+        """
+        executes one evaluation step.
+        very similar to `train_step`, but only calculates metrics and returns
+        them and does not calculate gradients.
+        """
         self.net.eval()
         batch = self._get_batch(split='eval')
         loss, *metrics = self.loss_fn(batch)
         return loss, metrics
 
     def _update_parameters(self):
+        """
+        updates the parameters in `self.net` based on accumulated gradients.
+        also updates schedulers, scalers and other variables.
+        """
         self.scaler.step(self.opt)
         self.opt.zero_grad()
         self.scaler.update()
@@ -212,7 +375,11 @@ class Trainer:
         self.nb_updates += 1
 
     def save_checkpoint(self):
-        if not cfg.use_checkpoints:
+        """
+        saves a checkpoint to `self.directories['checkpoints']`
+        returns early if `cfg` specifies not to save outputs
+        """
+        if not cfg.save_outputs:
             return
 
         checkpoint = {
@@ -224,8 +391,12 @@ class Trainer:
         }
         torch.save(checkpoint, self.directories['checkpoints'] / f"checkpoint-{str(self.nb_updates).zfill(7)}.pt")
 
-    # TODO: add init from load checkpoint option
     def load_checkpoint(self, path):
+        """
+        restore `Trainer` using checkpoint at path specified in `path`.
+
+        TODO: add init from load checkpoint option
+        """
         checkpoint = torch.load(path)
 
         self.net.load_state_dict(checkpoint['net'])
