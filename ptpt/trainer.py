@@ -42,8 +42,8 @@ class TrainerConfig:
 
         learning_rate:          the optimizer learning rate.
 
-        lr_anneal_mode:         string representing the learning rate scheduler
-                                mode. if present, create the corresponding rate
+        lr_scheduler_name:      string representing the learning rate scheduler
+                                name. if present, create the corresponding rate
                                 scheduler.
 
         lr_milestones:          if we are using a scheduler, define a list of
@@ -77,7 +77,7 @@ class TrainerConfig:
     optimizer_name:         str             = 'adam'
 
     learning_rate:          float           = 1e-4
-    lr_anneal_mode:         str             = None
+    lr_scheduler_name:      str             = None
     lr_milestones:          List[int]       = None
     lr_gamma:               float           = None
 
@@ -185,17 +185,15 @@ class Trainer:
         """
         gets the learning rate scheduling mode.
         defaults to no scheduling, i.e: the identity scheduler.
-
-        TODO: rename 'anneal_mode' to 'scheduling'
         """
-        if cfg.lr_anneal_mode in ['multi', 'multisteplr']:
+        if cfg.lr_scheduler_name in ['multi', 'multisteplr']:
             return torch.optim.lr_scheduler.MultiStepLR(
                 self.opt, 
                 milestones = self.cfg.lr_milestones, 
                 gamma = self.cfg.lr_gamma,
             )
         
-        if cfg.lr_anneal_mode is not None:
+        if cfg.lr_scheduler_name is not None:
             print("warning: unrecognised annealing mode. defaulting to no lr scheduler.")
         return torch.optim.lr_scheduler.MultiStepLR(
             self.opt,
