@@ -166,22 +166,42 @@ class Trainer:
 
         return False
 
-    def train(self):
+    def train(self, 
+            tqdm = False, 
+            silent = False
+        ):
         while not self._check_terminate():
             for _ in self.nb_batches[0]:
-                train_step()
+                loss, *metrics = train_step()
 
             for _ in self.nb_batches[1]:
-                eval_step()
+                loss, *metrics = eval_step()
 
+    # TODO: issue if mini bs doesn't divide bs correctly
     def train_step(self):
         self.net.train()
         batch = self._get_batch(split='train')
+        loss, *metrics = self.loss_fn(batch)
+
+        if isinstance(batch, (list, tuple)):
+            mini_batch_size = batch[0].shape[0]
+        else:
+            mini_batch_size = batch.shape[0]
+
+        batch_weighting = mini_batch_size / self.cfg.batch_size
+        self.scaler.scale(loss * batch_weighting).backward()
+
+        self.nb_examples += mini_batch_size
+        if self.nb_examples >= self.cfg.batch_size:
+            self._update_parameters()
+        return loss, metrics
 
     @torch.no_grad()
     def eval_step(self):
         self.net.eval()
         batch = self._get_batch(split='eval')
+        loss, *metrics = self.loss_fn(batch)
+        return loss, metrics
 
     def _update_parameters(self):
         self.scaler.step(self.opt)
