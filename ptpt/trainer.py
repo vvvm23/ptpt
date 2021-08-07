@@ -7,6 +7,7 @@ from typing import List, Tuple, Callable
 from functools import partial
 
 from .utils import get_device
+from .log import debug, info, warning, error, critical
 
 class TrainerConfig:
     """ 
@@ -63,6 +64,10 @@ class TrainerConfig:
 
         checkpoint_frequency:   the frequency at which to save a checkpoint,
                                 measured in `nb_updates`.
+
+        metric_names:           list of metric names returned by `loss_fn`.
+                                this can be empty, in the case that no additional
+                                metrics (other than the loss itself) are returned.
     """
 
     exp_name:               str             = "exp"
@@ -87,6 +92,8 @@ class TrainerConfig:
 
     save_outputs:           bool            = True
     checkpoint_frequency:   int             = 1000
+
+    metric_names:           List[str]       = []
 
     def __init__(self, **kwargs):
         for k,v in kwargs.items():
@@ -142,6 +149,7 @@ class Trainer:
             - device function is less clear cut.
         """
         if cfg == None:
+            info("no TrainerConfig specified. assuming default options.")
             cfg = TrainerConfig()
         self.cfg = cfg
 
@@ -163,6 +171,8 @@ class Trainer:
 
         self._loss_fn = loss_fn
         self.loss_fn = self._autocast_loss if cfg.use_amp else self._loss_fn
+        if cfg.use_amp:
+            info("using automatic mixed precision")
 
         self.device_fn = partial(device_fn, self)
 
@@ -175,10 +185,12 @@ class Trainer:
         defaults to the Adam optimizer.
         """
         if cfg.optimizer_name in ['adam']:
+            info("using Adam optimizer")
             return torch.optim.Adam(self.net.parameters(), lr=self.cfg.learning_rate)
 
         if cfg.optimizer_name is not None:
-            print("warning: unrecognised optimizer name. defaulting to 'adam'")
+            warning("unrecognised optimizer name. defaulting to 'adam'")
+        info("using Adam optimizer")
         return torch.optim.Adam(self.net.parameters(), lr=self.cfg.learning_rate)
 
     def _get_scheduler(self):
@@ -187,6 +199,7 @@ class Trainer:
         defaults to no scheduling, i.e: the identity scheduler.
         """
         if cfg.lr_scheduler_name in ['multi', 'multisteplr']:
+            info("using MultiStepLR learning rate scheduler")
             return torch.optim.lr_scheduler.MultiStepLR(
                 self.opt, 
                 milestones = self.cfg.lr_milestones, 
@@ -194,7 +207,7 @@ class Trainer:
             )
         
         if cfg.lr_scheduler_name is not None:
-            print("warning: unrecognised annealing mode. defaulting to no lr scheduler.")
+            warning("unrecognised annealing mode. defaulting to no lr scheduler.")
         return torch.optim.lr_scheduler.MultiStepLR(
             self.opt,
             milestones = [],
@@ -209,6 +222,7 @@ class Trainer:
         TODO: add support for additional output directories (think: images)
         TODO: might be good to add support for arbitrary callback functions 
         """
+        info("setting up experiment workspace")
         exps_dir = Path(cfg.exp_dir)
         exps_dir.mkdir(exist_ok=True)
 
@@ -230,6 +244,8 @@ class Trainer:
             'checkpoints': checkpoint_dir,
             'logs': log_dir,
         }
+        info(f"experimental directory is: {self.directories['root']}")
+        info("done setting up directories")
 
     def _setup_dataloader(self, train_dataset, test_dataset):
         """
@@ -237,6 +253,7 @@ class Trainer:
         also transparently converts finite datasets to infinite ones by setting
         `self.nb_batches` equal to length of dataloader.
         """
+        info("setting up dataloaders")
         args = {
             'batch_size': self.cfg.mini_batch_size,
             'shuffle': True,
@@ -253,6 +270,7 @@ class Trainer:
             self.cfg.nb_batches[0] if self.cfg.nb_batches[0] else len(self.train_loader),
             self.cfg.nb_batches[1] if self.cfg.nb_batches[1] else len(self.test_loader),
         )
+        info("done setting up dataloaders")
 
     def _get_batch(self, split='train'):
         """
@@ -274,6 +292,7 @@ class Trainer:
         try:
             data = next(iterator)
         except StopIteration:
+            debug(f"StopIteration - refreshing dataloader for split '{split}'")
             iterator = iter(loader)
             data = next(iterator)
             if split == 'train':
@@ -354,6 +373,7 @@ class Trainer:
         self.nb_examples += mini_batch_size
         if self.nb_examples >= self.cfg.batch_size:
             self._update_parameters()
+        
         return loss, metrics
 
     @torch.no_grad()
@@ -387,6 +407,8 @@ class Trainer:
         """
         if not cfg.save_outputs:
             return
+        checkpoint_name = f"checkpoint-{str(self.nb_updates).zfill(7)}.pt"
+        info(f"saving checkpoint '{checkpoint_name}'")
 
         checkpoint = {
             'net': self.net.state_dict(),
@@ -395,7 +417,7 @@ class Trainer:
             'nb_examples': self.nb_examples,
             'nb_updates': self.nb_updates, 
         }
-        torch.save(checkpoint, self.directories['checkpoints'] / f"checkpoint-{str(self.nb_updates).zfill(7)}.pt")
+        torch.save(checkpoint, self.directories['checkpoints'] / checkpoint_name)
 
     def load_checkpoint(self, path):
         """
@@ -403,6 +425,7 @@ class Trainer:
 
         TODO: add init from load checkpoint option
         """
+        info(f"restoring from checkpoint '{path}'")
         checkpoint = torch.load(path)
 
         self.net.load_state_dict(checkpoint['net'])
