@@ -48,6 +48,7 @@ class Trainer:
             cfg = TrainerConfig()
         self.cfg = cfg
         self._setup_workspace()
+        self._setup_dataloader()
 
         self.device = get_device(cfg.use_cuda)
         self.net = net.to(self.device)
@@ -60,6 +61,11 @@ class Trainer:
         self.lr_scheduler = self._get_scheduler()
 
         self.grad_scaler = torch.cuda.amp.GradScaler(enabled = cfg.use_amp)
+
+        self._loss_fn = partial(loss_fn, self)
+        self.loss_fn = self._autocast_loss if cfg.use_amp else self._loss_fn
+
+        self.device_fn = partial(device_fn, self)
 
         self.nb_examples = 0
         self.nb_updates = 0
@@ -111,13 +117,23 @@ class Trainer:
             'logs': log_dir,
         }
 
+    # TODO: support for infinite dataloading
+    def _setup_dataloader(self, train_dataset, test_dataset):
+        pass
+
+    def _autocast_loss(self, *args):
+        with torch.cuda.amp.autocast(enabled=self.scaler.is_enabled()):
+            return self._loss_fn(*args)
+
     def train(self):
         pass
 
     def train_step(self):
-        pass
-    def test_step(self):
-        pass
+        self.net.train()
+
+    @torch.no_grad()
+    def eval_step(self):
+        self.net.eval()
 
     def _update_parameters(self):
         self.scaler.step(self.opt)
