@@ -107,7 +107,7 @@ class TrainerConfig:
 
     def __str__(self):
         attributes = [x for x in dir(self) if not x.startswith('_')]
-        return '\n'.join(f"{a:25}: {getattr(self, a)}" for a in attributes)
+        return '\n'.join(f"\t{a:25}: {getattr(self, a)}" for a in attributes)
 
     def _check_valid(self):
         valid = True
@@ -200,6 +200,8 @@ class Trainer:
         """
         get the optimizer based on `cfg.optimizer_name`
         defaults to the Adam optimizer.
+
+        TODO: add more optimizers
         """
         if self.cfg.optimizer_name in ['adam']:
             info("using Adam optimizer")
@@ -214,6 +216,8 @@ class Trainer:
         """
         gets the learning rate scheduling mode.
         defaults to no scheduling, i.e: the identity scheduler.
+
+        TODO: add more schedulers
         """
         if self.cfg.lr_scheduler_name in ['multi', 'multisteplr']:
             info("using MultiStepLR learning rate scheduler")
@@ -225,6 +229,7 @@ class Trainer:
         
         if self.cfg.lr_scheduler_name is not None:
             warning("unrecognised annealing mode. defaulting to no lr scheduler.")
+        info("no learning rate scheduler in use")
         return torch.optim.lr_scheduler.MultiStepLR(
             self.opt,
             milestones = [],
@@ -294,7 +299,6 @@ class Trainer:
         gets a batch of data from the specified split.
         if the iterator has been exhausted, create a new one from the loader.
 
-        TODO: load data onto device based on device_fn
         TODO: eventually get rid of device_fn, and automatically determine based
         on specified device mode (single vs. multi device / process, CPU vs.
         GPU vs. TPU)
@@ -336,6 +340,7 @@ class Trainer:
         TODO: add option to pass arbitrary termination conditions
         """
         if self.cfg.max_steps and self.nb_updates < self.cfg.max_steps:
+            info("maximum number of parameter updates exceeded")
             return True
 
         return False
@@ -385,7 +390,9 @@ class Trainer:
         TODO: a lot
         TODO: apparently time.time is not accurate. replace with something that is.
         """
-        info("Trainer is starting main training loop")
+        info("Trainer is starting main training loop\n")
+        info("current configuration:")
+        info(self.cfg)
         while not self._check_terminate():
             epoch_time = time.time()
             train_loss = 0.0
