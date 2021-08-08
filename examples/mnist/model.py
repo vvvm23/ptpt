@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# from pytorch/examples, but removing pooling
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -17,7 +18,6 @@ class Net(nn.Module):
         x = F.relu(x)
         x = self.conv2(x)
         x = F.relu(x)
-        # x = F.max_pool2d(x, 2)
         x = self.dropout1(x)
         x = torch.flatten(x, 1)
         x = self.fc1(x)
