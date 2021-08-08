@@ -1,4 +1,4 @@
-# Alex's PyTorch Personal Trainer (pt pt)
+# Alex's PyTorch Personal Trainer (ptpt)
 > (name subject to change)
 
 This repository contains my personal lightweight framework for deep learning
@@ -6,8 +6,36 @@ projects in Torch.
 
 ## Installation
 
+Simply run `python -m build` in the root of the repo, then run `pip install` on
+the resulting `.whl` file.
+
+> No pip package yet..
+
 ## Usage
-The core of the library is the `trainer.Trainer` class.
+Import the library as with any other python library:
+```python
+from ptpt.trainer import Trainer, TrainerConfig
+from ptpt.log import debug, info, warning, error, critical
+```
+
+The core of the library is the `trainer.Trainer` class. In the simplest case, 
+it takes the following as input:
+
+```python
+net:            a `nn.Module` that is the model we wish to train.
+loss_fn:        a function that calls `self.net` and takes a single batch as an input.
+                it returns the loss and optionally other metrics.
+train_dataset:  the training dataset.
+test_dataset:   the test dataset.
+cfg:            a `TrainerConfig` instance that holds all
+                hyperparameters.
+```
+
+Once this is instantiated, starting the training loop is as simple as calling
+`trainer.train()` where `trainer` is an instance of `Trainer`.
+
+`cfg` stores most of the configuration options for `Trainer`. See the class
+definition of `TrainerConfig` for details on all options.
 
 ## Examples
 
@@ -102,8 +130,10 @@ produce plots from these, or they can be used in another library.
 
 ### TODO:
 
-- [ ] A lot.
+- [ ] Make a todo.
+
+### References
+- [rich](https://github.com/willmcgugan/rich) by [@willmcgugan](https://github.com/willmcgugan)
 
 ### Citations
 
-### References
