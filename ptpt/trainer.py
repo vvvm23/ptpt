@@ -141,7 +141,7 @@ class Trainer:
         loss_fn:                Callable,
         train_dataset:          torch.utils.data.Dataset,
         test_dataset:           torch.utils.data.Dataset,           
-        device_fn:              Callable = lambda self, x: x.to(self.device),
+        device_fn:              Callable = lambda self, X: [x.to(self.device) for x in X],
         cfg:                    TrainerConfig = None
     ):
         """
