@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 
+import time
 import datetime
 from pathlib import Path
 from typing import List, Tuple, Callable
@@ -159,9 +160,8 @@ class Trainer:
 
         TODO: `loss_fn` and `device_fn` having `self` in arg list feels awkward.
         find alternative.
-            - turns out, they do not need this at all. `loss_fn` can access `net` 
-              even after passing it to the class.
-            - device function is less clear cut.
+        TODO: device_fn could have a better default. perhaps directly casting if
+        batch is a tensor and iterating over a list if the input is a list.
         """
         if cfg == None:
             info("no TrainerConfig specified. assuming default options.")
@@ -170,7 +170,7 @@ class Trainer:
 
         if self.cfg.save_outputs:
             self._setup_workspace()
-        self._setup_dataloader()
+        self._setup_dataloader(train_dataset, test_dataset)
 
         self.device = get_device(cfg.use_cuda)
         self.net = net.to(self.device)
@@ -184,7 +184,7 @@ class Trainer:
 
         self.grad_scaler = torch.cuda.amp.GradScaler(enabled = cfg.use_amp)
 
-        self._loss_fn = loss_fn
+        self._loss_fn = partial(loss_fn, self)
         self.loss_fn = self._autocast_loss if cfg.use_amp else self._loss_fn
         if cfg.use_amp:
             info("using automatic mixed precision")
@@ -201,11 +201,11 @@ class Trainer:
         get the optimizer based on `cfg.optimizer_name`
         defaults to the Adam optimizer.
         """
-        if cfg.optimizer_name in ['adam']:
+        if self.cfg.optimizer_name in ['adam']:
             info("using Adam optimizer")
             return torch.optim.Adam(self.net.parameters(), lr=self.cfg.learning_rate)
 
-        if cfg.optimizer_name is not None:
+        if self.cfg.optimizer_name is not None:
             warning("unrecognised optimizer name. defaulting to 'adam'")
         info("using Adam optimizer")
         return torch.optim.Adam(self.net.parameters(), lr=self.cfg.learning_rate)
@@ -215,7 +215,7 @@ class Trainer:
         gets the learning rate scheduling mode.
         defaults to no scheduling, i.e: the identity scheduler.
         """
-        if cfg.lr_scheduler_name in ['multi', 'multisteplr']:
+        if self.cfg.lr_scheduler_name in ['multi', 'multisteplr']:
             info("using MultiStepLR learning rate scheduler")
             return torch.optim.lr_scheduler.MultiStepLR(
                 self.opt, 
@@ -223,7 +223,7 @@ class Trainer:
                 gamma = self.cfg.lr_gamma,
             )
         
-        if cfg.lr_scheduler_name is not None:
+        if self.cfg.lr_scheduler_name is not None:
             warning("unrecognised annealing mode. defaulting to no lr scheduler.")
         return torch.optim.lr_scheduler.MultiStepLR(
             self.opt,
@@ -240,11 +240,11 @@ class Trainer:
         TODO: might be good to add support for arbitrary callback functions 
         """
         info("setting up experiment workspace")
-        exps_dir = Path(cfg.exp_dir)
+        exps_dir = Path(self.cfg.exp_dir)
         exps_dir.mkdir(exist_ok=True)
 
         self.save_id = (
-            cfg.exp_name +
+            self.cfg.exp_name +
             str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
         )
         exp_root = exps_dir / self.save_id
@@ -317,13 +317,14 @@ class Trainer:
             elif split in ['test', 'eval']:
                 self.test_iter = iterator
 
+        data = self.device_fn(data)
         return data
 
     def _autocast_loss(self, *args):
         """
         thin wrapper around `loss_fn` to provide AMP autocasting
         """
-        with torch.cuda.amp.autocast(enabled=self.scaler.is_enabled()):
+        with torch.cuda.amp.autocast(enabled=self.grad_scaler.is_enabled()):
             return self._loss_fn(*args)
 
     def _check_terminate(self) -> bool:
@@ -339,19 +340,33 @@ class Trainer:
 
         return False
 
+    """
+    update the 'epoch' metrics based on the current 'batch' metrics
+    """
     def _update_metrics(self, metric_dict, batch_metrics):
-        for i, n in metric_dict:
+        for i, n in enumerate(metric_dict):
             metric_dict[n] += batch_metrics[i]
+    
+    """
+    simply averages a metric dictionary based on the given batch size
 
+    TODO: not sure if this is technically 'batch size'
+    """
     def _average_metrics(self, metric_dict, batch_size):
         for n in metric_dict:
             metric_dict[n] /= batch_size
 
+    """
+    function that displays the 'epoch' statistics
+
+    TODO: currently prints in dictionary insertion order, meaning loss is
+          last. we want a way to have an arbitrary order.
+    """
     def _print_epoch(self, train_metrics, eval_metrics):
         info_message = (
             f"nb_updates: {self.nb_updates}/{self.cfg.max_steps}\n"
             f"train metrics " + ' | '.join(f"{n}: {v}" for n,v in train_metrics.items()) + '\n'
-            f"eval metrics " + ' | '.join(f"{n}: {v}" for n,v in eval_metrics.items())
+            f"eval metrics " + ' | '.join(f"{n}: {v}" for n,v in eval_metrics.items()) + '\n'
         )
         info(info_message)
 
@@ -368,30 +383,40 @@ class Trainer:
             silent: run training loop silently
 
         TODO: a lot
+        TODO: apparently time.time is not accurate. replace with something that is.
         """
         info("Trainer is starting main training loop")
         while not self._check_terminate():
+            epoch_time = time.time()
             train_loss = 0.0
             train_metrics = {n: 0.0 for n in self.cfg.metric_names}
-            for _ in self.nb_batches[0]:
-                loss, *metrics = train_step()
+            train_time = time.time()
+            for _ in range(self.nb_batches[0]):
+                loss, metrics = self.train_step()
                 train_loss += loss.item()
                 self._update_metrics(train_metrics, metrics)
+            train_time = time.time() - train_time
 
             train_metrics['loss'] = train_loss
             self._average_metrics(train_metrics, self.nb_batches[0])
 
             eval_loss = 0.0
             eval_metrics = {n: 0.0 for n in self.cfg.metric_names}
-            for _ in self.nb_batches[1]:
-                loss, *metrics = eval_step()
+            eval_time = time.time()
+            for _ in range(self.nb_batches[1]):
+                loss, metrics = self.eval_step()
                 eval_loss += loss.item()
                 self._update_metrics(eval_metrics, metrics)
+            eval_time = time.time() - eval_time
 
             eval_metrics['loss'] = eval_loss
             self._average_metrics(eval_metrics, self.nb_batches[1])
 
             self._print_epoch(train_metrics, eval_metrics)
+            debug(f"epoch time elapsed: {time.time() - epoch_time:.2f} seconds")
+            debug(f"average train iteration time: {1000. * train_time / self.nb_batches[0]:.2f} ms")
+            debug(f"average eval iteration time: {1000. * eval_time / self.nb_batches[1]:.2f} ms")
+
         info("training loop has been terminated")
 
     def train_step(self):
@@ -418,7 +443,7 @@ class Trainer:
             mini_batch_size = batch.shape[0]
 
         batch_weighting = mini_batch_size / self.cfg.batch_size
-        self.scaler.scale(loss * batch_weighting).backward()
+        self.grad_scaler.scale(loss * batch_weighting).backward()
 
         self.nb_examples += mini_batch_size
         if self.nb_examples >= self.cfg.batch_size:
@@ -444,9 +469,9 @@ class Trainer:
         updates the parameters in `self.net` based on accumulated gradients.
         also updates schedulers, scalers and other variables.
         """
-        self.scaler.step(self.opt)
+        self.grad_scaler.step(self.opt)
         self.opt.zero_grad()
-        self.scaler.update()
+        self.grad_scaler.update()
         self.lr_scheduler.step()
         self.nb_examples = 0 # makes some assumptions about mini bs dividing bs perfectly
         self.nb_updates += 1
@@ -456,7 +481,7 @@ class Trainer:
         saves a checkpoint to `self.directories['checkpoints']`
         returns early if `cfg` specifies not to save outputs
         """
-        if not cfg.save_outputs:
+        if not self.cfg.save_outputs:
             return
         checkpoint_name = f"checkpoint-{str(self.nb_updates).zfill(7)}.pt"
         info(f"saving checkpoint '{checkpoint_name}'")
@@ -464,12 +489,12 @@ class Trainer:
         checkpoint = {
             'net': self.net.state_dict(),
             'opt': self.opt.state_dict(),
-            'scaler': self.scaler.state_dict(),
+            'scaler': self.grad_scaler.state_dict(),
             'nb_examples': self.nb_examples,
             'nb_updates': self.nb_updates, 
         }
         torch.save(checkpoint, self.directories['checkpoints'] / checkpoint_name)
-        self.next_save = self.nb_updates + cfg.checkpoint_frequency
+        self.next_save = self.nb_updates + self.cfg.checkpoint_frequency
 
     def load_checkpoint(self, path):
         """
@@ -482,6 +507,6 @@ class Trainer:
 
         self.net.load_state_dict(checkpoint['net'])
         self.opt.load_state_dict(checkpoint['opt'])
-        self.scaler.load_state_dict(checkpoint['scaler'])
+        self.grad_scaler.load_state_dict(checkpoint['scaler'])
         self.nb_examples = checkpoint['nb_examples']
         self.nb_updates = checkpoint['nb_updates']
