@@ -339,6 +339,22 @@ class Trainer:
 
         return False
 
+    def _update_metrics(self, metric_dict, batch_metrics):
+        for i, n in metric_dict:
+            metric_dict[n] += batch_metrics[i]
+
+    def _average_metrics(self, metric_dict, batch_size):
+        for n in metric_dict:
+            metric_dict[n] /= batch_size
+
+    def _print_epoch(self, train_metrics, eval_metrics):
+        info_message = (
+            f"nb_updates: {self.nb_updates}/{self.cfg.max_steps}\n"
+            f"train metrics " + ' | '.join(f"{n}: {v}" for n,v in train_metrics.items()) + '\n'
+            f"eval metrics " + ' | '.join(f"{n}: {v}" for n,v in eval_metrics.items())
+        )
+        info(info_message)
+
     def train(self, 
             tqdm = False, 
             silent = False,
@@ -353,12 +369,30 @@ class Trainer:
 
         TODO: a lot
         """
+        info("Trainer is starting main training loop")
         while not self._check_terminate():
+            train_loss = 0.0
+            train_metrics = {n: 0.0 for n in self.cfg.metric_names}
             for _ in self.nb_batches[0]:
                 loss, *metrics = train_step()
+                train_loss += loss.item()
+                self._update_metrics(train_metrics, metrics)
 
+            train_metrics['loss'] = train_loss
+            self._average_metrics(train_metrics, self.nb_batches[0])
+
+            eval_loss = 0.0
+            eval_metrics = {n: 0.0 for n in self.cfg.metric_names}
             for _ in self.nb_batches[1]:
                 loss, *metrics = eval_step()
+                eval_loss += loss.item()
+                self._update_metrics(eval_metrics, metrics)
+
+            eval_metrics['loss'] = eval_loss
+            self._average_metrics(eval_metrics, self.nb_batches[1])
+
+            self._print_epoch(train_metrics, eval_metrics)
+        info("training loop has been terminated")
 
     def train_step(self):
         """
@@ -373,7 +407,6 @@ class Trainer:
         for super-massive batch sizes.
 
         TODO: issue if mini bs doesn't divide bs perfectly
-        TODO: need way to understand meaning of metrics
         """
         self.net.train()
         batch = self._get_batch(split='train')
