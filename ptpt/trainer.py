@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Tuple, Callable
 from functools import partial
 
-from .utils import get_device
+from .utils import get_device, get_parameter_count
 from .log import debug, info, warning, error, critical
 
 class TrainerConfig:
@@ -141,7 +141,8 @@ class Trainer:
         loss_fn:                Callable,
         train_dataset:          torch.utils.data.Dataset,
         test_dataset:           torch.utils.data.Dataset,           
-        device_fn:              Callable = lambda self, X: [x.to(self.device) for x in X],
+        # device_fn:              Callable = lambda self, X: [x.to(self.device) for x in X],
+        device_fn:              Callable = None,
         cfg:                    TrainerConfig = None
     ):
         """
@@ -174,6 +175,7 @@ class Trainer:
 
         self.device = get_device(cfg.use_cuda)
         self.net = net.to(self.device)
+        info(f"number of parameters: {get_parameter_count(self.net)}")
 
         self.opt = cfg.optimizer
         if not self.opt:
@@ -189,12 +191,28 @@ class Trainer:
         if cfg.use_amp:
             info("using automatic mixed precision")
 
-        self.device_fn = partial(device_fn, self)
+        self.device_fn = device_fn
+        if self.device_fn == None:
+            self.device_fn = self._default_device_fn
 
         self.nb_examples = 0
         self.nb_updates = 0
 
         self.next_save = cfg.checkpoint_frequency
+    
+    def _default_device_fn(self, X):
+        if isinstance(X, torch.Tensor):
+            return X.to(self.device)
+        if isinstance(X, list):
+            return [x.to(self.device) for x in X]
+        if isinstance(X, tuple):
+            return tuple([x.to(self.device) for x in X])
+        if isinstance(X, dict):
+            return {n: v.to(self.device) for n,v in X.items()}
+
+        msg = f"default device_fn does not recognise type '{type(X)}'"
+        error(msg)
+        raise TypeError(msg)
 
     def _get_opt(self):
         """
