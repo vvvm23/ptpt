@@ -4,6 +4,10 @@
 This repository contains my personal lightweight framework for deep learning
 projects in Torch.
 
+> **Disclaimer: this project is very much work-in-progress. Although technically
+> useable, it is missing many features. Nonetheless, you may find some of the
+> design patterns and code snippets to be useful in the meantime.**
+
 ## Installation
 
 Simply run `python -m build` in the root of the repo, then run `pip install` on
