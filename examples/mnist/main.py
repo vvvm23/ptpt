@@ -1,11 +1,20 @@
-import sys
-
 import torch
 import torch.nn.functional as F
 from torchvision import datasets, transforms
 
 from model import Net
 from ptpt.trainer import TrainerConfig, Trainer
+from ptpt.log import critical
+
+# define your loss function (calling the model using `self.net`)
+def loss_fn(net, batch):
+    X, y = batch
+    logits = net(X)
+    loss = F.nll_loss(logits, y)
+
+    pred = logits.argmax(dim=-1, keepdim=True)
+    accuracy = 100. * pred.eq(y.view_as(pred)).sum().item() / y.shape[0]
+    return loss, accuracy
 
 def main():
     # define your train and test datasets
@@ -19,16 +28,6 @@ def main():
     # define your model (any `nn.Module`)
     net = Net()
 
-    # define your loss function (calling the model using `self.net`)
-    def loss_fn(self, batch):
-        X, y = batch
-        logits = self.net(X)
-        loss = F.nll_loss(logits, y)
-
-        pred = logits.argmax(dim=-1, keepdim=True)
-        accuracy = 100. * pred.eq(y.view_as(pred)).sum().item() / y.shape[0]
-        return loss, accuracy
-
     # define the training parameters
     cfg = TrainerConfig(
         exp_name = 'mnist-conv',
@@ -36,7 +35,7 @@ def main():
         learning_rate = 4e-4,
         nb_workers = 4,
         save_outputs = False,
-        metric_names = ['accuracy']
+        metric_names = ['accuracy'],
     )
 
     # initialise the trainer class
@@ -45,7 +44,7 @@ def main():
         loss_fn=loss_fn,
         train_dataset=train_dataset,
         test_dataset=test_dataset,
-        cfg=cfg
+        cfg=cfg,
     )
 
     # call `trainer.train` to start the training loop

@@ -27,7 +27,7 @@ it takes the following as input:
 
 ```python
 net:            a `nn.Module` that is the model we wish to train.
-loss_fn:        a function that calls `self.net` and takes a single batch as an input.
+loss_fn:        a function that takes a `nn.Module` and a batch as input.
                 it returns the loss and optionally other metrics.
 train_dataset:  the training dataset.
 test_dataset:   the test dataset.
@@ -63,13 +63,13 @@ test_dataset = datasets.MNIST('../data', train=False, download=True, transform=t
 net = Net()
 ```
 
-> Define your loss function that calls `self.net`, taking the full batch as input:
+> Define your loss function that calls `net`, taking the full batch as input:
 
 ```python
 # minimising classification error
-def loss_fn(self, batch):
+def loss_fn(net, batch):
     X, y = batch
-    logits = self.net(X)
+    logits = net(X)
     loss = F.nll_loss(logits, y)
 
     pred = logits.argmax(dim=-1, keepdim=True)

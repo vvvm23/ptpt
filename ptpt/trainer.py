@@ -157,11 +157,6 @@ class Trainer:
                             `self.device`.
             cfg:            a `TrainerConfig` instance that holds all
                             hyperparameters.
-
-        TODO: `loss_fn` and `device_fn` having `self` in arg list feels awkward.
-        find alternative.
-        TODO: device_fn could have a better default. perhaps directly casting if
-        batch is a tensor and iterating over a list if the input is a list.
         """
         if cfg == None:
             info("no TrainerConfig specified. assuming default options.")
@@ -173,6 +168,7 @@ class Trainer:
         self._setup_dataloader(train_dataset, test_dataset)
 
         self.device = get_device(cfg.use_cuda)
+        info(f"got device '{self.device}'")
         self.net = net.to(self.device)
         info(f"number of parameters: {get_parameter_count(self.net)}")
 
@@ -184,30 +180,31 @@ class Trainer:
         self.lr_scheduler = self._get_scheduler()
 
         self.grad_scaler = torch.cuda.amp.GradScaler(enabled = cfg.use_amp)
-
-        self._loss_fn = partial(loss_fn, self)
+        
+        self._loss_fn = partial(loss_fn, self.net)
         self.loss_fn = self._autocast_loss if cfg.use_amp else self._loss_fn
         if cfg.use_amp:
             info("using automatic mixed precision")
 
-        self.device_fn = device_fn
-        if self.device_fn == None:
-            self.device_fn = self._default_device_fn
+        # self.device_fn = device_fn
+        if device_fn == None:
+            device_fn = self._default_device_fn
+        self.device_fn = partial(device_fn, self.device)
 
         self.nb_examples = 0
         self.nb_updates = 0
 
         self.next_save = cfg.checkpoint_frequency
     
-    def _default_device_fn(self, X):
+    def _default_device_fn(self, device, X):
         if isinstance(X, torch.Tensor):
-            return X.to(self.device)
+            return X.to(device)
         if isinstance(X, list):
-            return [x.to(self.device) for x in X]
+            return [x.to(device) for x in X]
         if isinstance(X, tuple):
-            return tuple([x.to(self.device) for x in X])
+            return tuple([x.to(device) for x in X])
         if isinstance(X, dict):
-            return {n: v.to(self.device) for n,v in X.items()}
+            return {n: v.to(device) for n,v in X.items()}
 
         msg = f"default device_fn does not recognise type '{type(X)}'"
         error(msg)

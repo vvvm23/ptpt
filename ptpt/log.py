@@ -4,7 +4,7 @@ from rich.logging import RichHandler
 # TODO: needs way to set logging level globally
 FORMAT = "%(message)s"
 logging.basicConfig(
-    level="NOTSET", 
+    level=logging.NOTSET,
     format=FORMAT, 
     datefmt="[%x | %X]", 
     handlers=[RichHandler(rich_tracebacks=True)], 
