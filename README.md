@@ -2,7 +2,7 @@
 > (name subject to change)
 
 This repository contains my personal lightweight framework for deep learning
-projects in Torch.
+projects in PyTorch.
 
 > **Disclaimer: this project is very much work-in-progress. Although technically
 > useable, it is missing many features. Nonetheless, you may find some of the

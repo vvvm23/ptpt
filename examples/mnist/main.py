@@ -4,17 +4,6 @@ from torchvision import datasets, transforms
 
 from model import Net
 from ptpt.trainer import TrainerConfig, Trainer
-from ptpt.log import critical
-
-# define your loss function (calling the model using `self.net`)
-def loss_fn(net, batch):
-    X, y = batch
-    logits = net(X)
-    loss = F.nll_loss(logits, y)
-
-    pred = logits.argmax(dim=-1, keepdim=True)
-    accuracy = 100. * pred.eq(y.view_as(pred)).sum().item() / y.shape[0]
-    return loss, accuracy
 
 def main():
     # define your train and test datasets
@@ -22,8 +11,19 @@ def main():
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))
     ])
-    train_dataset = datasets.MNIST('../data', train=True, download=True, transform=transform)
-    test_dataset = datasets.MNIST('../data', train=False, download=True, transform=transform)
+    args = {'root': '../data', 'download': True, 'transform': transform}
+    train_dataset = datasets.MNIST(train=True, **args)
+    test_dataset = datasets.MNIST(train=False, **args)
+
+    # define your loss function (calling the model using `net`)
+    def loss_fn(net, batch):
+        X, y = batch
+        logits = net(X)
+        loss = F.nll_loss(logits, y)
+
+        pred = logits.argmax(dim=-1, keepdim=True)
+        accuracy = 100. * pred.eq(y.view_as(pred)).sum().item() / y.shape[0]
+        return loss, accuracy
 
     # define your model (any `nn.Module`)
     net = Net()
@@ -31,7 +31,7 @@ def main():
     # define the training parameters
     cfg = TrainerConfig(
         exp_name = 'mnist-conv',
-        batch_size = 64,
+        batch_size = 128,
         learning_rate = 4e-4,
         nb_workers = 4,
         save_outputs = False,
