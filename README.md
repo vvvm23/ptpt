@@ -10,10 +10,10 @@ projects in PyTorch.
 
 ## Installation
 
-Simply run `python -m build` in the root of the repo, then run `pip install` on
-the resulting `.whl` file.
+Install from `pip` by running `pip install ptpt`
 
-> No pip package yet..
+You can also build from source. Simply run `python -m build` in the root of the
+repo, then run `pip install` on the resulting `.whl` file.
 
 ## Usage
 Import the library as with any other python library:
