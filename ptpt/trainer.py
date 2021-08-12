@@ -263,7 +263,7 @@ class Trainer:
         exps_dir.mkdir(exist_ok=True)
 
         self.save_id = (
-            self.cfg.exp_name +
+            self.cfg.exp_name + '_' +
             str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
         )
         exp_root = exps_dir / self.save_id

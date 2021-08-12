@@ -140,3 +140,4 @@ cython_debug/
 # -> start of additional ignores <- # 
 examples/data
 dist/
+**/exp/

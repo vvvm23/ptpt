@@ -30,11 +30,12 @@ def main():
 
     # define the training parameters
     cfg = TrainerConfig(
+        exp_dir = '../exp',
         exp_name = 'mnist-conv',
         batch_size = 128,
         learning_rate = 4e-4,
         nb_workers = 4,
-        save_outputs = False,
+        save_outputs = True,
         metric_names = ['accuracy'],
     )
 
