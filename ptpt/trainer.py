@@ -353,7 +353,7 @@ class Trainer:
         TODO: add some common termination conditions
         TODO: add option to pass arbitrary termination conditions
         """
-        if self.cfg.max_steps and self.nb_updates < self.cfg.max_steps:
+        if self.cfg.max_steps and self.nb_updates > self.cfg.max_steps:
             info("maximum number of parameter updates exceeded")
             return True
 
