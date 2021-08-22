@@ -307,6 +307,12 @@ class Trainer:
             self.cfg.nb_batches[1] if self.cfg.nb_batches[1] else len(self.test_loader),
         )
         info("done setting up dataloaders")
+    
+    def _reset_loader(self, split='train'):
+        if split == 'train':
+            self.train_iter = iter(self.train_loader)
+        elif split in ['test', 'eval']:
+            self.test_iter = iter(self.test_loader)
 
     def _get_batch(self, split='train'):
         """
@@ -328,12 +334,15 @@ class Trainer:
             data = next(iterator)
         except StopIteration:
             debug(f"StopIteration - refreshing dataloader for split '{split}'")
-            iterator = iter(loader)
-            data = next(iterator)
-            if split == 'train':
-                self.train_iter = iterator
-            elif split in ['test', 'eval']:
-                self.test_iter = iterator
+            self._reset_loader(split=split)
+            return self._get_batch(split=split)
+
+            # iterator = iter(loader)
+            # if split == 'train':
+                # self.train_iter = iterator
+            # elif split in ['test', 'eval']:
+                # self.test_iter = iterator
+            # data = next(iterator)
 
         data = self.device_fn(data)
         return data
