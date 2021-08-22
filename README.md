@@ -59,7 +59,7 @@ test_dataset = datasets.MNIST('../data', train=False, download=True, transform=t
 > Define your model:
 
 ```python
-# in this case, we have imported `Net` from another file
+# `Net` could be any `nn.Module`
 net = Net()
 ```
 
@@ -134,7 +134,11 @@ produce plots from these, or they can be used in another library.
 
 ### TODO:
 
-- [ ] Make a todo.
+- [ ] Add arbitrary callback support at various points of execution
+- [ ] Add more learning rate schedulers
+- [ ] Add more optimizer options
+- [ ] Add logging-to-file
+- [ ] Adds silent and simpler logging
 
 ### References
 - [rich](https://github.com/willmcgugan/rich) by [@willmcgugan](https://github.com/willmcgugan)
