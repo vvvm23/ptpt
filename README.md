@@ -103,6 +103,14 @@ trainer = Trainer(
 )
 ```
 
+> Optionally, register some callback functions:
+
+```python
+def callback_fn(_):
+    info("Congratulations, you have completed an epoch!")
+trainer.register_callback(CallbackType.TrainEpoch, callback_fn)
+```
+
 > Call `trainer.train()` to begin the training loop
 
 ```python
@@ -134,7 +142,7 @@ produce plots from these, or they can be used in another library.
 
 ### TODO:
 
-- [ ] Add arbitrary callback support at various points of execution
+- [X] Add arbitrary callback support at various points of execution
 - [ ] Add more learning rate schedulers
 - [ ] Add more optimizer options
 - [ ] Add logging-to-file
