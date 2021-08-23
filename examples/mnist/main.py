@@ -4,6 +4,8 @@ from torchvision import datasets, transforms
 
 from model import Net
 from ptpt.trainer import TrainerConfig, Trainer
+from ptpt.callbacks import CallbackType
+from ptpt.log import info
 
 def main():
     # define your train and test datasets
@@ -47,6 +49,11 @@ def main():
         test_dataset=test_dataset,
         cfg=cfg,
     )
+
+    # register some callbacks to other behaviour
+    def callback_fn(_):
+        info("Congratulations, you have completed an epoch!")
+    trainer.register_callback(CallbackType.TrainEpoch, callback_fn)
 
     # call `trainer.train` to start the training loop
     trainer.train()

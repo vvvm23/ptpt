@@ -537,6 +537,7 @@ class Trainer:
         }
         torch.save(checkpoint, self.directories['checkpoints'] / checkpoint_name)
         self.next_save = self.nb_updates + self.cfg.checkpoint_frequency
+        self.check_callbacks(CallbackType.SaveCheckpoint)
 
     def load_checkpoint(self, path):
         """
@@ -553,6 +554,7 @@ class Trainer:
         self.nb_examples = checkpoint['nb_examples']
         self.nb_updates = checkpoint['nb_updates']
 
+    # TODO: pass arbitrary pointers to other data to `callback_fn`
     def register_callback(self, callback_type, callback_fn, frequency = 1):
         if not callback_type in CallbackType:
             msg = f"type '{callback_type}' is not a member of enum CallbackType!"
