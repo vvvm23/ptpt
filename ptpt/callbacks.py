@@ -9,8 +9,18 @@ class CallbackType(Enum):
     TestEpoch           = auto()
     TrainDataExhaust    = auto()
     TestDataExhaust     = auto()
-    FrequencyWallTime   = auto()
-    FrequencyUpdates    = auto()
     ParameterUpdate     = auto()
     Termination         = auto()
     Start               = auto()
+
+class CallbackCounter:
+    def __init__(self, frequency):
+        self.frequency = frequency
+        self.counter = 0
+
+    def check(self):
+        self.counter += 1
+        if self.counter % self.frequency:
+            return False
+        self.counter = 0
+        return True

@@ -9,6 +9,7 @@ from functools import partial
 
 from .utils import get_device, get_parameter_count
 from .log import debug, info, warning, error, critical
+from .callbacks import CallbackCounter, CallbackType
 
 class TrainerConfig:
     """ 
@@ -195,6 +196,8 @@ class Trainer:
         self.nb_updates = 0
 
         self.next_save = cfg.checkpoint_frequency
+
+        self.callbacks = {}
     
     def _default_device_fn(self, device, X):
         if isinstance(X, torch.Tensor):
@@ -540,3 +543,27 @@ class Trainer:
         self.grad_scaler.load_state_dict(checkpoint['scaler'])
         self.nb_examples = checkpoint['nb_examples']
         self.nb_updates = checkpoint['nb_updates']
+
+    def register_callback(self, callback_type, callback_fn, frequency = 1):
+        if not callback_type in CallbackType:
+            msg = f"type '{callback_type}' is not a member of enum CallbackType!"
+            error(msg)
+            raise TypeError(msg)
+
+        if not callback_type in self.callbacks:
+            self.callbacks[callback_type] = []
+
+        callback_tuple = (CallbackCounter(frequency), partial(callback_fn, self))
+        self.callbacks[callback_type].append(callback_tuple)
+
+    def check_callbacks(self, callback_type):
+        if not callback_type in CallbackType:
+            msg = f"type '{callback_type}' is not a member of enum CallbackType!"
+            error(msg)
+            raise TypeError(msg)
+        
+        if not callback_type in self.callbacks:
+            return
+
+        for c, fn in self.callbacks[callback_type]:
+            if c.check(): fn()
