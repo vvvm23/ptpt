@@ -4,11 +4,11 @@ from enum import Enum, auto
 # TODO: more of a design todo
 class CallbackType(Enum):
     TrainStep           = auto()
-    TestStep            = auto()
+    EvalStep            = auto()
     TrainEpoch          = auto()
-    TestEpoch           = auto()
+    EvalEpoch           = auto()
     TrainDataExhaust    = auto()
-    TestDataExhaust     = auto()
+    EvalDataExhaust     = auto()
     ParameterUpdate     = auto()
     Termination         = auto()
     Start               = auto()

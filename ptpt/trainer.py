@@ -337,6 +337,7 @@ class Trainer:
             data = next(iterator)
         except StopIteration:
             debug(f"StopIteration - refreshing dataloader for split '{split}'")
+            self.check_callbacks(CallbackType.TrainDataExhaust if split == 'train' else CallbackType.EvalDataExhaust)
             self._reset_loader(split=split)
             return self._get_batch(split=split)
 
@@ -419,6 +420,7 @@ class Trainer:
         info("Trainer is starting main training loop\n")
         info("current configuration:")
         info(self.cfg)
+        self.check_callbacks(CallbackType.Start)
         while not self._check_terminate():
             epoch_time = time.time()
             train_loss = 0.0
@@ -428,10 +430,11 @@ class Trainer:
                 loss, metrics = self.train_step()
                 train_loss += loss.item()
                 self._update_metrics(train_metrics, metrics)
-            train_time = time.time() - train_time
 
             train_metrics['loss'] = train_loss
             self._average_metrics(train_metrics, self.nb_batches[0])
+            self.check_callbacks(CallbackType.TrainEpoch)
+            train_time = time.time() - train_time
 
             eval_loss = 0.0
             eval_metrics = {n: 0.0 for n in self.cfg.metric_names}
@@ -440,10 +443,11 @@ class Trainer:
                 loss, metrics = self.eval_step()
                 eval_loss += loss.item()
                 self._update_metrics(eval_metrics, metrics)
-            eval_time = time.time() - eval_time
 
             eval_metrics['loss'] = eval_loss
             self._average_metrics(eval_metrics, self.nb_batches[1])
+            self.check_callbacks(CallbackType.EvalEpoch)
+            eval_time = time.time() - eval_time
 
             self._print_epoch(train_metrics, eval_metrics)
             debug(f"epoch time elapsed: {time.time() - epoch_time:.2f} seconds")
@@ -451,6 +455,7 @@ class Trainer:
             debug(f"average eval iteration time: {1000. * eval_time / self.nb_batches[1]:.2f} ms")
 
         info("training loop has been terminated")
+        self.check_callbacks(CallbackType.Termination)
 
     def train_step(self):
         """
@@ -483,6 +488,8 @@ class Trainer:
             self._update_parameters()
         if self.nb_updates >= self.next_save:
             self.save_checkpoint()
+
+        self.check_callbacks(CallbackType.TrainStep)
         return loss, metrics
 
     @torch.no_grad()
@@ -495,6 +502,7 @@ class Trainer:
         self.net.eval()
         batch = self._get_batch(split='eval')
         loss, *metrics = self.loss_fn(batch)
+        self.check_callbacks(CallbackType.EvalStep)
         return loss, metrics
 
     def _update_parameters(self):
@@ -508,6 +516,7 @@ class Trainer:
         self.lr_scheduler.step()
         self.nb_examples = 0 # makes some assumptions about mini bs dividing bs perfectly
         self.nb_updates += 1
+        self.check_callbacks(CallbackType.ParameterUpdate)
 
     def save_checkpoint(self):
         """
