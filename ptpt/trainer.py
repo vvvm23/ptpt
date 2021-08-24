@@ -299,6 +299,9 @@ class Trainer:
             'num_workers': self.cfg.nb_workers,
         }
 
+        self.train_dataset = train_dataset
+        self.test_dataset = test_dataset
+
         self.train_loader = torch.utils.data.DataLoader(train_dataset, **args)
         self.test_loader = torch.utils.data.DataLoader(test_dataset, **args)
 
