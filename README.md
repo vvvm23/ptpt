@@ -143,10 +143,10 @@ produce plots from these, or they can be used in another library.
 ### TODO:
 
 - [X] Add arbitrary callback support at various points of execution
+- [X] Add metric tracking
 - [ ] Add more learning rate schedulers
 - [ ] Add more optimizer options
 - [ ] Add logging-to-file
-- [ ] Add separate metric tracking
 - [ ] Adds silent and simpler logging
 - [ ] Support for distributed / multi-GPU operations
 - [ ] Set of functions for producing visualisations from disk dumps
