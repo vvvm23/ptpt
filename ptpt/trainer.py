@@ -463,6 +463,7 @@ class Trainer:
             eval_time = time.time() - eval_time
 
             self._print_epoch(train_metrics, eval_metrics)
+            self._dump_metrics(train_metrics, eval_metrics)
             debug(f"epoch time elapsed: {time.time() - epoch_time:.2f} seconds")
             debug(f"average train iteration time: {1000. * train_time / self.nb_batches[0]:.2f} ms")
             debug(f"average eval iteration time: {1000. * eval_time / self.nb_batches[1]:.2f} ms")
@@ -593,6 +594,9 @@ class Trainer:
             if c.check(): fn()
     
     def _log_metric(self, metric_name, split, value):
+        if not self.cfg.save_outputs:
+            return
+
         if not split in self.metric_handlers:
             msg = f"invalid split name '{split}'! expected one of {self.metric_handlers.keys()}"
             error(msg)
@@ -601,5 +605,15 @@ class Trainer:
         metric_dir = self.directories['metrics']
         if metric_name not in self.metric_handlers[split]:
             self.metric_handlers[split][metric_name] = open(metric_dir / f"{metric_name}.{split}.met", mode='wb')
+        f = self.metric_handlers[split][metric_name]
 
         f.write(struct.pack('f', value)) # we use 'f' as default PyTorch precision is 32bit. hence, we do not need double
+
+    def _dump_metrics(self, train_metrics, eval_metrics):
+        if not self.cfg.save_outputs:
+            return
+        debug("dumping metrics to binary file")
+        for n, v in train_metrics.items():
+            self._log_metric(n, 'train', v)
+        for n, v in eval_metrics.items():
+            self._log_metric(n, 'eval', v)
