@@ -3,6 +3,7 @@ import torch.nn.functional as F
 
 import time
 import datetime
+import struct
 from pathlib import Path
 from typing import List, Tuple, Callable
 from functools import partial
@@ -278,10 +279,19 @@ class Trainer:
         log_dir = exp_root / "logs"
         log_dir.mkdir(exist_ok=True)
 
+        metric_dir = log_dir / "metrics"
+        metric_dir.mkdir(exist_ok=True)
+
+        self.metric_handlers = {
+            'train': {},
+            'eval': {},
+        }
+
         self.directories = {
             'root': exp_root,
             'checkpoints': checkpoint_dir,
             'logs': log_dir,
+            'metrics': metric_dir,
         }
         info(f"experimental directory is: {self.directories['root']}")
         info("done setting up directories")
@@ -581,3 +591,15 @@ class Trainer:
 
         for c, fn in self.callbacks[callback_type]:
             if c.check(): fn()
+    
+    def _log_metric(self, metric_name, split, value):
+        if not split in self.metric_handlers:
+            msg = f"invalid split name '{split}'! expected one of {self.metric_handlers.keys()}"
+            error(msg)
+            raise ValueError(msg)
+        
+        metric_dir = self.directories['metrics']
+        if metric_name not in self.metric_handlers[split]:
+            self.metric_handlers[split][metric_name] = open(metric_dir / f"{metric_name}.{split}.met", mode='wb')
+
+        f.write(struct.pack('f', value)) # we use 'f' as default PyTorch precision is 32bit. hence, we do not need double
