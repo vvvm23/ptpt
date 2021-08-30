@@ -142,8 +142,9 @@ class Trainer:
         net:                    torch.nn.Module,
         loss_fn:                Callable,
         train_dataset:          torch.utils.data.Dataset,
-        test_dataset:           torch.utils.data.Dataset,           
+        test_dataset:           torch.utils.data.Dataset,
         device_fn:              Callable = None,
+        collate_fn:             Callable = None,
         cfg:                    TrainerConfig = None
     ):
         """
@@ -157,6 +158,7 @@ class Trainer:
             test_dataset:   the test dataset.
             device_fn:      a function that handles moving a batch to
                             `self.device`.
+            collate_fn:     custom collate function for dataloader
             cfg:            a `TrainerConfig` instance that holds all
                             hyperparameters.
         """
@@ -167,7 +169,7 @@ class Trainer:
 
         if self.cfg.save_outputs:
             self._setup_workspace()
-        self._setup_dataloader(train_dataset, test_dataset)
+        self._setup_dataloader(train_dataset, test_dataset, collate_fn=collate_fn)
 
         self.device = get_device(cfg.use_cuda)
         info(f"got device '{self.device}'")
@@ -296,7 +298,7 @@ class Trainer:
         info(f"experimental directory is: {self.directories['root']}")
         info("done setting up directories")
 
-    def _setup_dataloader(self, train_dataset, test_dataset):
+    def _setup_dataloader(self, train_dataset, test_dataset, collate_fn=None):
         """
         sets up dataloaders for provided datasets.
         also transparently converts finite datasets to infinite ones by setting
@@ -307,6 +309,7 @@ class Trainer:
             'batch_size': self.cfg.mini_batch_size,
             'shuffle': True,
             'num_workers': self.cfg.nb_workers,
+            'collate_fn': collate_fn,
         }
 
         self.train_dataset = train_dataset
