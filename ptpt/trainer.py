@@ -310,6 +310,7 @@ class Trainer:
             'shuffle': True,
             'num_workers': self.cfg.nb_workers,
             'collate_fn': collate_fn,
+            'pin_memory': self.cfg.use_cuda,
         }
 
         self.train_dataset = train_dataset
