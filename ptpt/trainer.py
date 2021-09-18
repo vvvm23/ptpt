@@ -621,3 +621,13 @@ class Trainer:
             self._log_metric(n, 'train', v)
         for n, v in eval_metrics.items():
             self._log_metric(n, 'eval', v)
+
+    @torch.inference_mode()
+    def inference(self, x):
+        """
+            Call `self.net` in inference mode and directly returns network outputs.
+            `x` should be in the same format as the dataset batch.
+        """
+        x = self.device_fn(x)
+        self.net.eval()
+        return self.net(x)
