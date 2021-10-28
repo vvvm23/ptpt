@@ -221,11 +221,23 @@ class Trainer:
         get the optimizer based on `cfg.optimizer_name`
         defaults to the Adam optimizer.
 
-        TODO: add more optimizers
+        TODO: pass optim params? or just rely on passing actual instance?
         """
         if self.cfg.optimizer_name in ['adam']:
             info("using Adam optimizer")
             return torch.optim.Adam(self.net.parameters(), lr=self.cfg.learning_rate)
+        if self.cfg.optimizer_name in ['adamw']:
+            info("using AdamW optimizer")
+            return torch.optim.AdamW(self.net.parameters(), lr=self.cfg.learning_rate)
+        if self.cfg.optimizer_name in ['adamax']:
+            info("using Adamax optimizer")
+            return torch.optim.Adamax(self.net.parameters(), lr=self.cfg.learning_rate)
+        elif self.cfg.optimizer_name in ['sgd']:
+            info("using SGD optimizer")
+            return torch.optim.SGD(self.net.parameters(), lr=self.cfg.learning_rate)
+        elif self.cfg.optimizer_name in ['rmsprop', 'rms']:
+            info("using RMSprop optimizer")
+            return torch.optim.RMSprop(self.net.parameters(), lr=self.cfg.learning_rate)
 
         if self.cfg.optimizer_name is not None:
             warning("unrecognised optimizer name. defaulting to 'adam'")
