@@ -250,6 +250,7 @@ class Trainer:
         defaults to no scheduling, i.e: the identity scheduler.
 
         TODO: add more schedulers
+        TODO: in general, needs a rework
         """
         if self.cfg.lr_scheduler_name in ['multi', 'multisteplr']:
             info("using MultiStepLR learning rate scheduler")
