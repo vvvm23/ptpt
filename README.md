@@ -119,6 +119,26 @@ trainer.train() # Go!
 
 See more examples [here](examples/).
 
+#### Weights and Biases Integration
+
+Weights and Biases logging is supported via the `ptpt.wandb.WandConfig`
+dataclass.
+
+Currently only supports a small set of features:
+```
+class WandbConfig:
+    project: str = None         # project name
+    entity: str = None          # wandb entity name
+    name: str = None            # run name (leave blank for random two words)
+    config: dict = None         # hyperparameters to save on wandb
+    log_net: bool = False       # whether to use wandb to watch network gradients
+    log_metrics: bool = True    # whether to use wandb to report epoch metrics
+```
+
+If you want to log something else in addition to epoch metrics, you can use
+`ptpt.callbacks` and access wandb through `trainer.wandb`. When calling log
+here, ensure commit is set to `False` to avoid advancing the global step.
+
 ## Motivation
 I found myself repeating a lot of same structure in many of my deep learning
 projects. This project is the culmination of my efforts refining the typical
