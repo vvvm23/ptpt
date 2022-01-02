@@ -662,7 +662,7 @@ class Trainer:
 
     # TODO: warn if global step advanced greater than expected (eg. committing in a callback)
     def _wandb_log_metrics(self, train_metrics, eval_metrics):
-        if not self.wandb or self.wandb_cfg.log_metrics:
+        if not self.wandb or not self.wandb_cfg.log_metrics:
             return 
         debug("logging metrics to Weights and Biases.")
         self.wandb.log({'train': train_metrics, 'eval': eval_metrics})
