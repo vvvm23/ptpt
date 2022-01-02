@@ -75,6 +75,15 @@ class TrainerConfig:
         metric_names:           list of metric names returned by `loss_fn`.
                                 this can be empty, in the case that no additional
                                 metrics (other than the loss itself) are returned.
+
+        metric_best:            `Tuple[str, str]` denoting the metric to consider when 
+                                calculating a new "best" model and whether
+                                ascending ('asc') or descending ('des') is
+                                better. defaults to ('loss', 'des').
+                                when calculating the 'best' it will use eval metrics, 
+                                but will store metrics for both train and eval splits.
+                                If `None`, don't report new best. 
+
     """
 
     exp_name:               str             = "exp"
@@ -101,6 +110,7 @@ class TrainerConfig:
     checkpoint_frequency:   int             = 1000
 
     metric_names:           List[str]       = []
+    metric_best:            Tuple[str, str] = ('loss', 'des')
 
     def __init__(self, **kwargs):
         for k,v in kwargs.items():
@@ -223,6 +233,9 @@ class Trainer:
         self.next_save = cfg.checkpoint_frequency
 
         self.callbacks = {}
+
+        self.best_train_metrics = {n: None for n in self.cfg.metric_names + ['loss']}
+        self.best_eval_metrics = {n: None for n in self.cfg.metric_names + ['loss']}
     
     def _default_device_fn(self, device, X):
         if isinstance(X, torch.Tensor):
@@ -441,6 +454,38 @@ class Trainer:
             metric_dict[n] /= batch_size
 
     """
+    returns `True` if current `eval_metrics` are better than previous best.
+    """
+    def _check_new_best(self, eval_metrics):
+        if self.cfg.metric_best == None:
+            return False
+
+        metric_name = self.cfg.metric_best[0]
+        if self.best_eval_metrics[metric_name] == None:
+            return True
+
+        if self.cfg.metric_best[-1] == 'des':
+            return eval_metrics[metric_name] < self.best_eval_metrics[metric_name]
+        return eval_metrics[metric_name] > self.best_eval_metrics[metric_name]
+
+    """
+    update the best metrics seen so far.
+    """
+    def _update_best_metrics(self, train_metrics, eval_metrics):
+        self.best_train_metrics = {n: v for n, v in train_metrics.items()}
+        self.best_eval_metrics = {n: v for n, v in eval_metrics.items()}
+        self._update_best_metrics_wandb(train_metrics, eval_metrics)
+
+    def _update_best_metrics_wandb(self, train_metrics, eval_metrics):
+        if not self.wandb or not self.cfg.save_outputs: # TODO: wonder if we can replace this check with a nice decorator
+            return
+
+        for n, v in train_metrics.items():
+            self.wandb.summary['best.train.' + n] = v
+        for n, v in eval_metrics.items():
+            self.wandb.summary['best.eval.' + n] = v
+
+    """
     function that displays the 'epoch' statistics
 
     TODO: currently prints in dictionary insertion order, meaning loss is
@@ -502,6 +547,10 @@ class Trainer:
             eval_time = time.time() - eval_time
 
             self._print_epoch(train_metrics, eval_metrics)
+            if self._check_new_best(eval_metrics):
+                info(f"new best model based on '{self.cfg.metric_best[0]}'")
+                self._update_best_metrics(train_metrics, eval_metrics)
+
             # self._dump_metrics(train_metrics, eval_metrics)
             self._wandb_log_metrics(train_metrics, eval_metrics)
             debug(f"epoch time elapsed: {time.time() - epoch_time:.2f} seconds")
