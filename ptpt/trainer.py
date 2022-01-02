@@ -1,9 +1,12 @@
 import torch
 import torch.nn.functional as F
 
+import wandb
+
 import time
 import datetime
 import struct
+import warnings
 from pathlib import Path
 from typing import List, Tuple, Callable
 from functools import partial
@@ -11,6 +14,7 @@ from functools import partial
 from .utils import get_device, get_parameter_count
 from .log import debug, info, warning, error, critical
 from .callbacks import CallbackCounter, CallbackType
+from .wandb import WandbConfig
 
 class TrainerConfig:
     """ 
@@ -145,7 +149,8 @@ class Trainer:
         test_dataset:           torch.utils.data.Dataset,
         device_fn:              Callable = None,
         collate_fn:             Callable = None,
-        cfg:                    TrainerConfig = None
+        cfg:                    TrainerConfig = None,
+        wandb_cfg:           WandbConfig = None,
     ):
         """
         the `Trainer` init function.
@@ -161,6 +166,8 @@ class Trainer:
             collate_fn:     custom collate function for dataloader
             cfg:            a `TrainerConfig` instance that holds all
                             hyperparameters.
+            wandb_cfg:   a `WandbConfig` instance that holds Weights and
+                            Biases related configurations.
         """
         if cfg == None:
             info("no TrainerConfig specified. assuming default options.")
@@ -189,6 +196,21 @@ class Trainer:
         self.loss_fn = self._autocast_loss if cfg.use_amp else self._loss_fn
         if cfg.use_amp:
             info("using automatic mixed precision")
+
+        self.wandb = None
+        self.wandb_cfg = wandb_cfg
+        if self.cfg.save_outputs and wandb_cfg:
+            info("WandbConfig specified. trying to use Weights and Biases.")
+            self.wandb = wandb.init(
+                entity = wandb_cfg.entity,
+                project = wandb_cfg.project,
+                name = wandb_cfg.name,
+                config = wandb_cfg.config,
+                dir = self.directories['root'],
+                resume = 'auto',
+            )
+            if wandb_cfg.log_net:
+                wandb.watch(self.net)
 
         # self.device_fn = device_fn
         if device_fn == None:
@@ -480,7 +502,8 @@ class Trainer:
             eval_time = time.time() - eval_time
 
             self._print_epoch(train_metrics, eval_metrics)
-            self._dump_metrics(train_metrics, eval_metrics)
+            # self._dump_metrics(train_metrics, eval_metrics)
+            self._wandb_log_metrics(train_metrics, eval_metrics)
             debug(f"epoch time elapsed: {time.time() - epoch_time:.2f} seconds")
             debug(f"average train iteration time: {1000. * train_time / self.nb_batches[0]:.2f} ms")
             debug(f"average eval iteration time: {1000. * eval_time / self.nb_batches[1]:.2f} ms")
@@ -614,6 +637,7 @@ class Trainer:
         if not self.cfg.save_outputs:
             return
 
+        warnings.warn("binary file logging has been replaced by wandb logging.", DeprecationWarning)
         if not split in self.metric_handlers:
             msg = f"invalid split name '{split}'! expected one of {self.metric_handlers.keys()}"
             error(msg)
@@ -629,11 +653,19 @@ class Trainer:
     def _dump_metrics(self, train_metrics, eval_metrics):
         if not self.cfg.save_outputs:
             return
+        warnings.warn("binary file logging has been replaced by wandb logging.", DeprecationWarning)
         debug("dumping metrics to binary file")
         for n, v in train_metrics.items():
             self._log_metric(n, 'train', v)
         for n, v in eval_metrics.items():
             self._log_metric(n, 'eval', v)
+
+    # TODO: warn if global step advanced greater than expected (eg. committing in a callback)
+    def _wandb_log_metrics(self, train_metrics, eval_metrics):
+        if not self.wandb and self.wandb_cfg.log_metrics:
+            return 
+        debug("logging metrics to Weights and Biases.")
+        self.wandb.log({'train': train_metrics, 'eval': eval_metrics})
 
     @torch.inference_mode()
     def inference(self, x):

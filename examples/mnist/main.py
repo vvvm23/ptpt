@@ -6,6 +6,7 @@ from model import Net
 from ptpt.trainer import TrainerConfig, Trainer
 from ptpt.callbacks import CallbackType
 from ptpt.log import info
+from ptpt.wandb import WandbConfig
 
 def main():
     # define your train and test datasets
@@ -32,13 +33,22 @@ def main():
 
     # define the training parameters
     cfg = TrainerConfig(
-        exp_dir = '../exp',
+        exp_dir = 'exp',
         exp_name = 'mnist-conv',
         batch_size = 128,
         learning_rate = 4e-4,
         nb_workers = 4,
         save_outputs = True,
         metric_names = ['accuracy'],
+    )
+
+    # (optional) define wandb config
+    wandb_cfg = WandbConfig(
+        project = 'ptpt-test',
+        entity = 'afmck',
+        name = None,
+        log_net = True,
+        log_metrics = True,
     )
 
     # initialise the trainer class
@@ -48,6 +58,7 @@ def main():
         train_dataset=train_dataset,
         test_dataset=test_dataset,
         cfg=cfg,
+        wandb_cfg=wandb_cfg,
     )
 
     # register some callbacks to other behaviour
