@@ -50,6 +50,10 @@ class TrainerConfig:
 
         grad_none:              set gradient to None instead of 0. defaults True.
 
+        clip_grad:              boolean determining whether to clip gradient norms
+
+        clip_grad_value:        maximum norm of the gradients if `clip_grad` is true
+
         learning_rate:          the optimizer learning rate.
 
         lr_scheduler_name:      string representing the learning rate scheduler
@@ -99,6 +103,8 @@ class TrainerConfig:
     optimizer:              torch.optim     = None
     optimizer_name:         str             = 'adamw'
     grad_none:              bool            = True
+    clip_grad:              bool            = None
+    clip_grad_value:        float           = 5.0
 
     learning_rate:          float           = 1e-4
     lr_scheduler_name:      str             = None
@@ -255,7 +261,7 @@ class Trainer:
         raise TypeError(msg)
 
     def _get_opt(self):
-       """
+        """
         get the optimizer based on `cfg.optimizer_name`
         defaults to the Adam optimizer.
 
@@ -270,10 +276,10 @@ class Trainer:
         if self.cfg.optimizer_name in ['adamax']:
             info("using Adamax optimizer")
             return torch.optim.Adamax(self.net.parameters(), lr=self.cfg.learning_rate)
-        elif self.cfg.optimizer_name in ['sgd']:
+        if self.cfg.optimizer_name in ['sgd']:
             info("using SGD optimizer")
             return torch.optim.SGD(self.net.parameters(), lr=self.cfg.learning_rate)
-        elif self.cfg.optimizer_name in ['rmsprop', 'rms']:
+        if self.cfg.optimizer_name in ['rmsprop', 'rms']:
             info("using RMSprop optimizer")
             return torch.optim.RMSprop(self.net.parameters(), lr=self.cfg.learning_rate)
 
@@ -617,6 +623,9 @@ class Trainer:
         updates the parameters in `self.net` based on accumulated gradients.
         also updates schedulers, scalers and other variables.
         """
+        self.grad_scaler.unscale_(self.opt)
+        if self.cfg.clip_grad:
+            torch.nn.utils.clip_grad_norm_(self.net.parameters(), self.cfg.clip_grad_value)
         self.grad_scaler.step(self.opt)
         self.opt.zero_grad(set_to_none=self.cfg.grad_none)
         self.grad_scaler.update()
