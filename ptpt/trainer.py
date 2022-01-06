@@ -76,7 +76,11 @@ class TrainerConfig:
                                 to disk.
 
         checkpoint_frequency:   the frequency at which to save a checkpoint,
-                                measured in `nb_updates`.
+                                measured in `nb_updates`. If 0, don't create
+                                checkpoints based on frequency.
+
+        checkpoint_best:        when a new best model is obtained, create a
+                                checkpoint, overwriting the previous.
 
         metric_names:           list of metric names returned by `loss_fn`.
                                 this can be empty, in the case that no additional
@@ -116,7 +120,8 @@ class TrainerConfig:
     use_amp:                bool            = True
 
     save_outputs:           bool            = True
-    checkpoint_frequency:   int             = 1000
+    checkpoint_frequency:   int             = 5000
+    checkpoint_best:        bool            = True
 
     metric_names:           List[str]       = []
     metric_best:            Tuple[str, str] = ('loss', 'des')
@@ -239,6 +244,7 @@ class Trainer:
         self.nb_examples = 0
         self.nb_updates = 0
 
+        self.cfg.checkpoint_frequency = self.cfg.checkpoint_frequency if self.cfg.checkpoint_frequency > 0 else float('inf')
         self.next_save = cfg.checkpoint_frequency
 
         self.callbacks = {}
@@ -560,6 +566,8 @@ class Trainer:
             if self._check_new_best(eval_metrics):
                 info(f"new best model based on '{self.cfg.metric_best[0]}'")
                 self._update_best_metrics(train_metrics, eval_metrics)
+                if self.cfg.checkpoint_best:
+                    self.save_checkpoint(name='best')
 
             # self._dump_metrics(train_metrics, eval_metrics)
             self._wandb_log_metrics(train_metrics, eval_metrics)
@@ -634,14 +642,14 @@ class Trainer:
         self.nb_updates += 1
         self.check_callbacks(CallbackType.ParameterUpdate)
 
-    def save_checkpoint(self):
+    def save_checkpoint(self, name: str = None):
         """
         saves a checkpoint to `self.directories['checkpoints']`
         returns early if `cfg` specifies not to save outputs
         """
         if not self.cfg.save_outputs:
             return
-        checkpoint_name = f"checkpoint-{str(self.nb_updates).zfill(7)}.pt"
+        checkpoint_name = f"{name}.pt" if name else f"checkpoint-{str(self.nb_updates).zfill(7)}.pt"
         info(f"saving checkpoint '{checkpoint_name}'")
 
         checkpoint = {
