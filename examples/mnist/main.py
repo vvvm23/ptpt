@@ -58,7 +58,7 @@ def main():
         train_dataset=train_dataset,
         test_dataset=test_dataset,
         cfg=cfg,
-        wandb_cfg=wandb_cfg,
+        # wandb_cfg=wandb_cfg,
     )
 
     # register some callbacks to other behaviour

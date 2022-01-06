@@ -48,6 +48,8 @@ class TrainerConfig:
         optimizer_name:         a string that maps to some optimizer so it can
                                 be automatically initialised.
 
+        grad_none:              set gradient to None instead of 0. defaults True.
+
         learning_rate:          the optimizer learning rate.
 
         lr_scheduler_name:      string representing the learning rate scheduler
@@ -96,6 +98,7 @@ class TrainerConfig:
 
     optimizer:              torch.optim     = None
     optimizer_name:         str             = 'adam'
+    grad_none:              bool            = True
 
     learning_rate:          float           = 1e-4
     lr_scheduler_name:      str             = None
@@ -196,7 +199,7 @@ class Trainer:
         self.opt = cfg.optimizer
         if not self.opt:
             self.opt = self._get_opt()
-        self.opt.zero_grad()
+        self.opt.zero_grad(set_to_none=self.cfg.grad_none)
 
         self.lr_scheduler = self._get_scheduler()
 
@@ -614,7 +617,7 @@ class Trainer:
         also updates schedulers, scalers and other variables.
         """
         self.grad_scaler.step(self.opt)
-        self.opt.zero_grad()
+        self.opt.zero_grad(set_to_none=self.cfg.grad_none)
         self.grad_scaler.update()
         self.lr_scheduler.step()
         self.nb_examples = 0 # makes some assumptions about mini bs dividing bs perfectly
