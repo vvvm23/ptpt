@@ -97,7 +97,7 @@ class TrainerConfig:
     max_steps:              int             = 0
 
     optimizer:              torch.optim     = None
-    optimizer_name:         str             = 'adam'
+    optimizer_name:         str             = 'adamw'
     grad_none:              bool            = True
 
     learning_rate:          float           = 1e-4
@@ -255,7 +255,7 @@ class Trainer:
         raise TypeError(msg)
 
     def _get_opt(self):
-        """
+       """
         get the optimizer based on `cfg.optimizer_name`
         defaults to the Adam optimizer.
 
@@ -277,10 +277,11 @@ class Trainer:
             info("using RMSprop optimizer")
             return torch.optim.RMSprop(self.net.parameters(), lr=self.cfg.learning_rate)
 
+        # TODO: is it best to continue if optimizer unrecognized? 
         if self.cfg.optimizer_name is not None:
-            warning("unrecognised optimizer name. defaulting to 'adam'")
-        info("using Adam optimizer")
-        return torch.optim.Adam(self.net.parameters(), lr=self.cfg.learning_rate)
+            warning("unrecognised optimizer name. defaulting to 'adamw'")
+        info("using AdamW optimizer")
+        return torch.optim.AdamW(self.net.parameters(), lr=self.cfg.learning_rate)
 
     def _get_scheduler(self):
         """
