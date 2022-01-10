@@ -14,6 +14,7 @@ from functools import partial
 from .utils import get_device, get_parameter_count
 from .log import debug, info, warning, error, critical
 from .callbacks import CallbackCounter, CallbackType
+from .scheduling import get_scheduler
 from .wandb import WandbConfig
 
 class TrainerConfig:
@@ -58,13 +59,10 @@ class TrainerConfig:
 
         lr_scheduler_name:      string representing the learning rate scheduler
                                 name. if present, create the corresponding rate
-                                scheduler.
+                                scheduler. defaults to 'constant'
 
-        lr_milestones:          if we are using a scheduler, define a list of
-                                milestones, based on `nb_updates`.
-
-        lr_gamma:               if the scheduler uses gamma annealing, define
-                                the multiplicative factor.
+        lr_scheduler_kwargs:    kwargs for learning rate scheduler. defaults to 
+                                empty dict as 'constant' has no parameters.
 
         nb_workers:             number of CPU workers to use when loading data.
 
@@ -111,9 +109,10 @@ class TrainerConfig:
     clip_grad_value:        float           = 5.0
 
     learning_rate:          float           = 1e-4
-    lr_scheduler_name:      str             = None
-    lr_milestones:          List[int]       = None
-    lr_gamma:               float           = None
+    lr_scheduler_name:      str             = 'constant'
+    # lr_milestones:          List[int]       = None
+    # lr_gamma:               float           = None
+    lr_scheduler_kwargs:                    = {}
 
     nb_workers:             int             = 0
     use_cuda:               bool            = True
@@ -212,7 +211,8 @@ class Trainer:
             self.opt = self._get_opt()
         self.opt.zero_grad(set_to_none=self.cfg.grad_none)
 
-        self.lr_scheduler = self._get_scheduler()
+        # self.lr_scheduler = self._get_scheduler()
+        self.lr_scheduler = get_scheduler(cfg.lr_scheduler_name, self.opt, **cfg.lr_scheduler_kwargs)
 
         self.grad_scaler = torch.cuda.amp.GradScaler(enabled = cfg.use_amp)
         
@@ -303,6 +303,7 @@ class Trainer:
         TODO: add more schedulers
         TODO: in general, needs a rework
         """
+        warnings.warn("legacy learning rate scheduling is deprecated.", DeprecationWarning)
         if self.cfg.lr_scheduler_name in ['multi', 'multisteplr']:
             info("using MultiStepLR learning rate scheduler")
             return torch.optim.lr_scheduler.MultiStepLR(
@@ -655,6 +656,7 @@ class Trainer:
         checkpoint = {
             'net': self.net.state_dict(),
             'opt': self.opt.state_dict(),
+            'lr_scheduler': self.lr_scheduler.state_dict(),
             'scaler': self.grad_scaler.state_dict(),
             'nb_examples': self.nb_examples,
             'nb_updates': self.nb_updates, 
@@ -674,6 +676,7 @@ class Trainer:
 
         self.net.load_state_dict(checkpoint['net'])
         self.opt.load_state_dict(checkpoint['opt'])
+        self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
         self.grad_scaler.load_state_dict(checkpoint['scaler'])
         self.nb_examples = checkpoint['nb_examples']
         self.nb_updates = checkpoint['nb_updates']
