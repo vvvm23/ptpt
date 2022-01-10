@@ -112,7 +112,7 @@ class TrainerConfig:
     lr_scheduler_name:      str             = 'constant'
     # lr_milestones:          List[int]       = None
     # lr_gamma:               float           = None
-    lr_scheduler_kwargs:                    = {}
+    lr_scheduler_kwargs:    dict            = {}
 
     nb_workers:             int             = 0
     use_cuda:               bool            = True
@@ -563,13 +563,15 @@ class Trainer:
             self.check_callbacks(CallbackType.EvalEpoch)
             eval_time = time.time() - eval_time
 
+            debug(f"current learning rate: {self.lr_scheduler.get_last_lr()}")
+
             self._print_epoch(train_metrics, eval_metrics)
             if self._check_new_best(eval_metrics):
                 info(f"new best model based on '{self.cfg.metric_best[0]}'")
                 self._update_best_metrics(train_metrics, eval_metrics)
                 if self.cfg.checkpoint_best:
                     self.save_checkpoint(name='best')
-
+            
             # self._dump_metrics(train_metrics, eval_metrics)
             self._wandb_log_metrics(train_metrics, eval_metrics)
             debug(f"epoch time elapsed: {time.time() - epoch_time:.2f} seconds")

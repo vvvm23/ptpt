@@ -40,6 +40,7 @@ def main():
         nb_workers = 4,
         save_outputs = True,
         metric_names = ['accuracy'],
+        max_steps = 10_000,
     )
 
     # (optional) define wandb config
