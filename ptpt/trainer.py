@@ -92,6 +92,8 @@ class TrainerConfig:
                                 but will store metrics for both train and eval splits.
                                 If `None`, don't report new best. 
 
+        non_blocking:           whether to move tensors in an asynchronous manner.
+
     """
 
     exp_name:               str             = "exp"
@@ -124,6 +126,8 @@ class TrainerConfig:
 
     metric_names:           List[str]       = []
     metric_best:            Tuple[str, str] = ('loss', 'des')
+
+    non_blocking:           bool            = True
 
     def __init__(self, **kwargs):
         for k,v in kwargs.items():
@@ -203,7 +207,7 @@ class Trainer:
 
         self.device = get_device(cfg.use_cuda)
         info(f"got device '{self.device}'")
-        self.net = net.to(self.device)
+        self.net = net.to(self.device, non_blocking=cfg.non_blocking)
         info(f"number of parameters: {get_parameter_count(self.net)}")
 
         self.opt = cfg.optimizer
@@ -254,13 +258,13 @@ class Trainer:
     
     def _default_device_fn(self, device, X):
         if isinstance(X, torch.Tensor):
-            return X.to(device)
+            return X.to(device, non_blocking=self.cfg.non_blocking)
         if isinstance(X, list):
-            return [x.to(device) for x in X]
+            return [x.to(device, non_blocking=self.cfg.non_blocking) for x in X]
         if isinstance(X, tuple):
-            return tuple([x.to(device) for x in X])
+            return tuple([x.to(device, non_blocking=self.cfg.non_blocking) for x in X])
         if isinstance(X, dict):
-            return {n: v.to(device) for n,v in X.items()}
+            return {n: v.to(device, non_blocking=self.cfg.non_blocking) for n, v in X.items()}
 
         msg = f"default device_fn does not recognise type '{type(X)}'"
         error(msg)
