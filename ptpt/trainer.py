@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 
 import wandb
+from accelerate import Accelerator
 
 import time
 import datetime
@@ -92,8 +93,6 @@ class TrainerConfig:
                                 but will store metrics for both train and eval splits.
                                 If `None`, don't report new best. 
 
-        non_blocking:           whether to move tensors in an asynchronous manner.
-
     """
 
     exp_name:               str             = "exp"
@@ -107,13 +106,11 @@ class TrainerConfig:
     optimizer:              torch.optim     = None
     optimizer_name:         str             = 'adamw'
     grad_none:              bool            = True
-    clip_grad:              bool            = None
+    clip_grad:              bool            = False
     clip_grad_value:        float           = 5.0
 
     learning_rate:          float           = 1e-4
     lr_scheduler_name:      str             = 'constant'
-    # lr_milestones:          List[int]       = None
-    # lr_gamma:               float           = None
     lr_scheduler_kwargs:    dict            = {}
 
     nb_workers:             int             = 0
@@ -126,8 +123,6 @@ class TrainerConfig:
 
     metric_names:           List[str]       = []
     metric_best:            Tuple[str, str] = ('loss', 'des')
-
-    non_blocking:           bool            = True
 
     def __init__(self, **kwargs):
         for k,v in kwargs.items():
@@ -177,7 +172,7 @@ class Trainer:
         device_fn:              Callable = None,
         collate_fn:             Callable = None,
         cfg:                    TrainerConfig = None,
-        wandb_cfg:           WandbConfig = None,
+        wandb_cfg:              WandbConfig = None,
     ):
         """
         the `Trainer` init function.
@@ -201,29 +196,31 @@ class Trainer:
             cfg = TrainerConfig()
         self.cfg = cfg
 
+        self.accelerator = Accelerator(
+            fp16 = cfg.use_amp,
+            cpu = not cfg.use_cuda
+        )
+
         if self.cfg.save_outputs:
             self._setup_workspace()
-        self._setup_dataloader(train_dataset, test_dataset, collate_fn=collate_fn)
 
-        self.device = get_device(cfg.use_cuda)
+        self.device = self.accelerator.device
         info(f"got device '{self.device}'")
-        self.net = net.to(self.device, non_blocking=cfg.non_blocking)
+        self.net = net
         info(f"number of parameters: {get_parameter_count(self.net)}")
 
         self.opt = cfg.optimizer
         if not self.opt:
             self.opt = self._get_opt()
+        self.net, self.opt = self.accelerator.prepare(self.net, self.opt)
         self.opt.zero_grad(set_to_none=self.cfg.grad_none)
 
-        # self.lr_scheduler = self._get_scheduler()
         self.lr_scheduler = get_scheduler(cfg.lr_scheduler_name, self.opt, **cfg.lr_scheduler_kwargs)
 
-        self.grad_scaler = torch.cuda.amp.GradScaler(enabled = cfg.use_amp)
-        
         self._loss_fn = partial(loss_fn, self.net)
-        self.loss_fn = self._autocast_loss if cfg.use_amp else self._loss_fn
-        if cfg.use_amp:
-            info("using automatic mixed precision")
+        self.loss_fn = self._autocast_loss
+
+        self._setup_dataloader(train_dataset, test_dataset, collate_fn=collate_fn)
 
         self.wandb = None
         self.wandb_cfg = wandb_cfg
@@ -239,11 +236,6 @@ class Trainer:
             )
             if wandb_cfg.log_net:
                 wandb.watch(self.net)
-
-        # self.device_fn = device_fn
-        if device_fn == None:
-            device_fn = self._default_device_fn
-        self.device_fn = partial(device_fn, self.device)
 
         self.nb_examples = 0
         self.nb_updates = 0
@@ -333,6 +325,8 @@ class Trainer:
         TODO: add support for additional output directories (think: images)
         TODO: might be good to add support for arbitrary callback functions 
         """
+        if not self.accelerator.is_local_main_process:
+            return
         info("setting up experiment workspace")
         exps_dir = Path(self.cfg.exp_dir)
         exps_dir.mkdir(exist_ok=True)
@@ -388,6 +382,9 @@ class Trainer:
         self.train_loader = torch.utils.data.DataLoader(train_dataset, **args)
         self.test_loader = torch.utils.data.DataLoader(test_dataset, **args)
 
+        self.train_loader = self.accelerator.prepare(self.train_loader)
+        self.test_loader = self.accelerator.prepare(self.test_loader)
+
         self.train_iter = iter(self.train_loader)
         self.test_iter = iter(self.test_loader)
 
@@ -407,10 +404,6 @@ class Trainer:
         """
         gets a batch of data from the specified split.
         if the iterator has been exhausted, create a new one from the loader.
-
-        TODO: eventually get rid of device_fn, and automatically determine based
-        on specified device mode (single vs. multi device / process, CPU vs.
-        GPU vs. TPU)
         """
         if split == 'train':
             iterator = self.train_iter
@@ -427,21 +420,13 @@ class Trainer:
             self._reset_loader(split=split)
             return self._get_batch(split=split)
 
-            # iterator = iter(loader)
-            # if split == 'train':
-                # self.train_iter = iterator
-            # elif split in ['test', 'eval']:
-                # self.test_iter = iterator
-            # data = next(iterator)
-
-        data = self.device_fn(data)
         return data
 
     def _autocast_loss(self, *args):
         """
         thin wrapper around `loss_fn` to provide AMP autocasting
         """
-        with torch.cuda.amp.autocast(enabled=self.grad_scaler.is_enabled()):
+        with self.accelerator.autocast():
             return self._loss_fn(*args)
 
     def _check_terminate(self) -> bool:
@@ -498,7 +483,7 @@ class Trainer:
         self._update_best_metrics_wandb(train_metrics, eval_metrics)
 
     def _update_best_metrics_wandb(self, train_metrics, eval_metrics):
-        if not self.wandb or not self.cfg.save_outputs: # TODO: wonder if we can replace this check with a nice decorator
+        if not self.accelerator.is_main_process or not self.wandb or not self.cfg.save_outputs: # TODO: wonder if we can replace this check with a nice decorator
             return
 
         for n, v in train_metrics.items():
@@ -609,7 +594,7 @@ class Trainer:
             mini_batch_size = batch.shape[0]
 
         batch_weighting = mini_batch_size / self.cfg.batch_size
-        self.grad_scaler.scale(loss * batch_weighting).backward()
+        self.accelerator.backward(loss * batch_weighting)
 
         self.nb_examples += mini_batch_size
         if self.nb_examples >= self.cfg.batch_size:
@@ -630,6 +615,10 @@ class Trainer:
         self.net.eval()
         batch = self._get_batch(split='eval')
         loss, *metrics = self.loss_fn(batch)
+
+        loss = self.accelerator.gather(loss)
+        metrics = [self.accelerator.gather(m)]
+
         self.check_callbacks(CallbackType.EvalStep)
         return loss, metrics
 
@@ -638,15 +627,14 @@ class Trainer:
         updates the parameters in `self.net` based on accumulated gradients.
         also updates schedulers, scalers and other variables.
         """
-        self.grad_scaler.unscale_(self.opt)
         if self.cfg.clip_grad:
-            torch.nn.utils.clip_grad_norm_(self.net.parameters(), self.cfg.clip_grad_value)
-        self.grad_scaler.step(self.opt)
+            self.accelerator.clip_grad_norm_(self.net.parameters(), self.cfg.clip_grad_value)
+        self.opt.step()
         self.opt.zero_grad(set_to_none=self.cfg.grad_none)
-        self.grad_scaler.update()
-        self.lr_scheduler.step()
+        if not self.accelerator.optimizer_step_was_skipped:
+            self.lr_scheduler.step()
+            self.nb_updates += 1
         self.nb_examples = 0 # makes some assumptions about mini bs dividing bs perfectly
-        self.nb_updates += 1
         self.check_callbacks(CallbackType.ParameterUpdate)
 
     def save_checkpoint(self, name: str = None):
@@ -654,20 +642,21 @@ class Trainer:
         saves a checkpoint to `self.directories['checkpoints']`
         returns early if `cfg` specifies not to save outputs
         """
-        if not self.cfg.save_outputs:
+        if not self.accelerator.is_local_main_process or not self.cfg.save_outputs:
             return
+
+        self.accelerator.wait_for_everyone()
         checkpoint_name = f"{name}.pt" if name else f"checkpoint-{str(self.nb_updates).zfill(7)}.pt"
         info(f"saving checkpoint '{checkpoint_name}'")
 
         checkpoint = {
-            'net': self.net.state_dict(),
+            'net': self.accelerator.unwrap_model(self.net).state_dict(),
             'opt': self.opt.state_dict(),
             'lr_scheduler': self.lr_scheduler.state_dict(),
-            'scaler': self.grad_scaler.state_dict(),
             'nb_examples': self.nb_examples,
             'nb_updates': self.nb_updates, 
         }
-        torch.save(checkpoint, self.directories['checkpoints'] / checkpoint_name)
+        self.accelerator.save(checkpoint, self.directories['checkpoints'] / checkpoint_name)
         self.next_save = self.nb_updates + self.cfg.checkpoint_frequency
         self.check_callbacks(CallbackType.SaveCheckpoint)
 
@@ -678,12 +667,12 @@ class Trainer:
         TODO: add init from load checkpoint option
         """
         info(f"restoring from checkpoint '{path}'")
+        self.accelerator.wait_for_everyone()
         checkpoint = torch.load(path)
 
-        self.net.load_state_dict(checkpoint['net'])
+        self.accelerator.unwrap_model(self.net).load_state_dict(checkpoint['net'])
         self.opt.load_state_dict(checkpoint['opt'])
         self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
-        self.grad_scaler.load_state_dict(checkpoint['scaler'])
         self.nb_examples = checkpoint['nb_examples']
         self.nb_updates = checkpoint['nb_updates']
 
@@ -741,7 +730,7 @@ class Trainer:
 
     # TODO: warn if global step advanced greater than expected (eg. committing in a callback)
     def _wandb_log_metrics(self, train_metrics, eval_metrics):
-        if not self.wandb or not self.wandb_cfg.log_metrics:
+        if not self.accelerator.is_main_process or not self.wandb or not self.wandb_cfg.log_metrics:
             return 
         debug("logging metrics to Weights and Biases.")
         self.wandb.log({'train': train_metrics, 'eval': eval_metrics})
@@ -752,6 +741,5 @@ class Trainer:
             Call `self.net` in inference mode and directly returns network outputs.
             `x` should be in the same format as the dataset batch.
         """
-        x = self.device_fn(x)
         self.net.eval()
-        return self.net(x)
+        return self.accelerator.gather(self.net(x))

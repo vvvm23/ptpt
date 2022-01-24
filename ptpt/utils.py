@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import random
+import accelerate
 
 class HelperModule(torch.nn.Module):
     def __init__(self, *args, **kwargs):
@@ -18,7 +19,7 @@ def get_device(try_cuda):
     if not try_cuda or not torch.cuda.is_available(): return torch.device('cpu')
     return torch.device('cuda')
 
-def set_seed(seed = None, min_seed=0, max_seed=2**8):
+def set_seed(seed = None, min_seed=0, max_seed=2**32):
     if seed == None:
         seed = random.randint(min_seed, max_seed)
     random.seed(seed)
@@ -26,4 +27,5 @@ def set_seed(seed = None, min_seed=0, max_seed=2**8):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     torch.random.manual_seed(seed)
+    accelerate.utils.set_seed(seed)
     return seed

@@ -38,7 +38,7 @@ def main():
         batch_size = 128,
         learning_rate = 4e-4,
         nb_workers = 4,
-        save_outputs = True,
+        save_outputs = False,
         metric_names = ['accuracy'],
         max_steps = 10_000,
     )
