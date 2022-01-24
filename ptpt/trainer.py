@@ -616,8 +616,8 @@ class Trainer:
         batch = self._get_batch(split='eval')
         loss, *metrics = self.loss_fn(batch)
 
-        loss = self.accelerator.gather(loss)
-        metrics = [self.accelerator.gather(m)]
+        #loss = self.accelerator.gather(loss)
+        #metrics = [self.accelerator.gather(m) for m in metrics]
 
         self.check_callbacks(CallbackType.EvalStep)
         return loss, metrics
