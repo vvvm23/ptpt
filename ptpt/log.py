@@ -20,6 +20,7 @@ info = logger.info
 warning = logger.warning
 error = logger.error
 critical = logger.critical
+<<<<<<< HEAD
 
 def _wrap_fn(f, accelerator):
     def new_fn(*args, **kwargs):
@@ -28,8 +29,6 @@ def _wrap_fn(f, accelerator):
     return new_fn
 
 def wrap_log(accelerator):
-    # wrap_fn = lambda f: f if accelerator.is_local_main_process else noop
-
     globals()['debug'] = _wrap_fn(logger.debug, accelerator)
     globals()['info'] = _wrap_fn(logger.info, accelerator)
     globals()['warning'] = _wrap_fn(logger.warning, accelerator)
