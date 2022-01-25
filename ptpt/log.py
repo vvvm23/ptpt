@@ -1,3 +1,5 @@
+import torch
+
 import logging
 from rich.logging import RichHandler
 
@@ -14,19 +16,13 @@ logging.basicConfig(
 
 logger = logging.getLogger("rich")
 
-debug = logger.debug
-info = logger.info
-warning = logger.warning
-error = logger.error
-critical = logger.critical
-
-def wrap_log(accelerator):
-    global debug, info, warning, error, critical
+def wrap_log(f):
     noop = lambda *args, **kwargs: None
-    wrapping_fn = lambda f: f if accelerator.is_local_main_process else noop
+    return lambda f: f if torch.distributed.get_rank() == 0 else noop
 
-    debug = wrapping_fn(debug)
-    info = wrapping_fn(info)
-    warning = wrapping_fn(warning)
-    error = wrapping_fn(error)
-    critical = wrapping_fn(critical)
+debug = wrap_log(logger.debug)
+info = wrap_log(logger.info)
+warning = wrap_log(logger.warning)
+error = wrap_log(logger.error)
+critical = wrap_log(logger.critical)
+

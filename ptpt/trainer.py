@@ -14,7 +14,6 @@ from functools import partial
 
 from .utils import get_device, get_parameter_count
 from .log import debug, info, warning, error, critical
-from .log import wrap_log
 from .callbacks import CallbackCounter, CallbackType
 from .scheduling import get_scheduler
 from .wandb import WandbConfig
@@ -201,7 +200,6 @@ class Trainer:
             fp16 = cfg.use_amp,
             cpu = not cfg.use_cuda
         )
-        wrap_log(self.accelerator)
 
         if self.cfg.save_outputs:
             self._setup_workspace()
@@ -644,7 +642,7 @@ class Trainer:
         saves a checkpoint to `self.directories['checkpoints']`
         returns early if `cfg` specifies not to save outputs
         """
-        if not self.accelerator.is_local_main_process or not self.cfg.save_outputs:
+        if not self.cfg.save_outputs:
             return
 
         self.accelerator.wait_for_everyone()
