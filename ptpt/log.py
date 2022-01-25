@@ -20,7 +20,6 @@ info = logger.info
 warning = logger.warning
 error = logger.error
 critical = logger.critical
-<<<<<<< HEAD
 
 def _wrap_fn(f, accelerator):
     def new_fn(*args, **kwargs):
