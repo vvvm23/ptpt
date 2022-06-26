@@ -11,6 +11,7 @@ import warnings
 from pathlib import Path
 from typing import List, Tuple, Callable
 from functools import partial
+from collections.abc import Mapping
 
 from .utils import get_device, get_parameter_count
 from .log import debug, info, warning, error, critical
@@ -592,8 +593,8 @@ class Trainer:
 
         if isinstance(batch, (list, tuple)):
             mini_batch_size = batch[0].shape[0]
-        if isinstance(batch, dict):
-            mini_batch_size = batch.values()[0].shape[0]
+        elif isinstance(batch, Mapping):
+            mini_batch_size = list(batch.values())[0].shape[0]
         else:
             mini_batch_size = batch.shape[0]
 
