@@ -209,7 +209,7 @@ class Trainer:
         self.device = self.accelerator.device
         info(f"got device '{self.device}'")
         self.net = net
-        info(f"number of parameters: {get_parameter_count(self.net)}")
+        # info(f"number of parameters: {get_parameter_count(self.net)}")
 
         self.opt = cfg.optimizer
         if not self.opt:
@@ -592,6 +592,8 @@ class Trainer:
 
         if isinstance(batch, (list, tuple)):
             mini_batch_size = batch[0].shape[0]
+        if isinstance(batch, dict):
+            mini_batch_size = batch.values()[0].shape[0]
         else:
             mini_batch_size = batch.shape[0]
 
