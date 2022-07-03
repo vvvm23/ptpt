@@ -121,11 +121,12 @@ See more examples [here](examples/).
 
 #### Weights and Biases Integration
 
-Weights and Biases logging is supported via the `ptpt.wandb.WandConfig`
+Weights and Biases logging is supported via the `ptpt.wandb.WandbConfig`
 dataclass.
 
 Currently only supports a small set of features:
-```
+
+```python
 class WandbConfig:
     project: str = None         # project name
     entity: str = None          # wandb entity name
@@ -164,7 +165,7 @@ produce plots from these, or they can be used in another library.
 
 - [X] Add arbitrary callback support at various points of execution
 - [X] Add metric tracking
-- [ ] Add more learning rate schedulers
+- [X] Add more learning rate schedulers
 - [ ] Add more optimizer options
 - [ ] Add logging-to-file
 - [ ] Adds silent and simpler logging
